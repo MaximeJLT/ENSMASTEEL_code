@@ -60,7 +60,7 @@ sim_render.py (matplotlib)
 | `main_simu.py` | Boucle principale simulateur (20 Hz) |
 | `sim_core.py` | `WorldState` sim, `SimEngine` physique (holonome 500mm/s), scoring Eurobot |
 | `sim_render.py` | Rendu matplotlib : table, zones, robot, caisses, score en temps réel |
-| `strategy_runner.py` | `StrategyRunner` sim — même logique que `jetson_strategy_v2.py` |
+| `strategy_runner.py` | `StrategyRunner` sim — même logique que `jetson_strategy.py` |
 
 ### Configuration
 
