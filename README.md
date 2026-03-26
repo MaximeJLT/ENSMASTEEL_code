@@ -282,9 +282,7 @@ Phase 1 — Stratégie déterministe (EN COURS)
 ├── ✅ JetsonStrategyRunner (plan fixe scenario.json)
 ├── ✅ Protocole UDP Jetson ↔ Maman défini
 ├── ✅ maman_fictive_v2 (test en boucle fermée)
-├── ⏳ ID ArUco robot à définir
-├── ⏳ Test sur robot réel
-└── ⏳ Optimisation du strategy_plan (score maximal)
+├── Mettre en place d'autres stratégies alternatives
 
 Phase 2 — Safety / Avoid
 ├── ○ Détection adversaire (OPPONENT_IDS à renseigner)
