@@ -1,0 +1,74 @@
+{
+  "zones": [
+    {
+      "name": "table",
+      "x_mm": -1500,
+      "y_mm": -1000,
+      "width_mm": 3000,
+      "height_mm": 2000
+    },
+    {
+      "name": "our_nest",
+      "x_mm": 975,
+      "y_mm": 625,
+      "width_mm": 350,
+      "height_mm": 350
+    },
+    {
+      "name": "pantry_1",
+      "x_mm": 700,
+      "y_mm": -1000,
+      "width_mm": 200,
+      "height_mm": 200
+    },
+    {
+      "name": "pantry_2",
+      "x_mm": -100,
+      "y_mm": -1000,
+      "width_mm": 200,
+      "height_mm": 200
+    },
+    {
+      "name": "pantry_3",
+      "x_mm": -900,
+      "y_mm": -1000,
+      "width_mm": 200,
+      "height_mm": 200
+    },
+    {
+      "name": "pantry_4",
+      "x_mm": -800,
+      "y_mm": -300,
+      "width_mm": 200,
+      "height_mm": 200
+    },
+    {
+      "name": "pantry_5",
+      "x_mm": -100,
+      "y_mm": -300,
+      "width_mm": 200,
+      "height_mm": 200
+    },
+    {
+      "name": "pantry_6",
+      "x_mm": 600,
+      "y_mm": -300,
+      "width_mm": 200,
+      "height_mm": 200
+    },
+    {
+      "name": "pantry_7",
+      "x_mm": 150,
+      "y_mm": 350,
+      "width_mm": 200,
+      "height_mm": 200
+    },
+    {
+      "name": "pantry_8",
+      "x_mm": -350,
+      "y_mm": 350,
+      "width_mm": 200,
+      "height_mm": 200
+    }
+  ]
+}
