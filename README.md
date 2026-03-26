@@ -227,9 +227,9 @@ Dictionnaire utilisé : **DICT_4X4_50** (OpenCV)
 
 ### Priorité moyenne
 
-- [ ] **PAMI** : canal de communication séparé (UDP direct Jetson→PAMI) ou relayé par maman ?
+- [ ] **PAMI** 
 - [ ] **Odométrie maman** : dans quel repère maman exprime-t-elle sa position ? (table mm, ou repère local ?) → pour le recalage
-- [ ] **Nombre de PAMI** : 1 (grenier seulement) ou plusieurs ? → impacte la complexité du canal commandes
+- [ ] **Nombre de PAMI** : 1 (grenier seulement) ou plusieurs ? 
 
 ### Priorité basse (phase 2 et 3)
 
