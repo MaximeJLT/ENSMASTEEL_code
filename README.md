@@ -49,8 +49,7 @@ sim_render.py (matplotlib)
 | `world_state.py` | Classes `Robot`, `Caisse`, `Opponent`, `Zone`, `WorldState` (conteneurs d'état) |
 | `world_init.py` | Charge `zones.json` et initialise le `WorldState` |
 | `world_updater.py` | Classe les détections en robot/adversaire/caisse, remplit le `WorldState` |
-| `json_main.py` | **Boucle principale v1** — vision→world→UDP sans stratégie (obsolète) |
-| `json_main_v3.py` | **Boucle principale v3** — vision→world→stratégie→UDP avec `command` |
+| `json_main.py` | **Boucle principale** — vision→world→stratégie→UDP avec `command` |
 | `jetson_strategy_v2.py` | `JetsonStrategyRunner` — exécute `strategy_plan` de `scenario.json`, machine à états, attente `action_done` maman |
 | `maman_fictive.py` | **Simulateur maman v1** — affiche le world + ACK simple (obsolète) |
 | `maman_fictive_v2.py` | **Simulateur maman v2** — exécute vraiment GOTO/PICKUP/DROP, renvoie `robot_state` |
