@@ -1,6 +1,5 @@
-# json_main_v3.py
-# Boucle principale Jetson — v3
-# Intègre JetsonStrategyRunner v2 (plan fixe + action_done maman)
+# json_main.py
+# Boucle principale Jetson \u2014 v4 (avec �vitement adversaire)
 
 import socket
 import json
@@ -12,7 +11,7 @@ from world_init import init_world
 from world_updater import update_world_state
 from json_strategy import JetsonStrategyRunner
 
-# ---- Réseau ----
+# ---- R�seau ----
 JETSON_IP   = "127.0.0.1"
 JETSON_PORT = 5006
 MAMAN_IP    = "127.0.0.1"
@@ -20,15 +19,15 @@ MAMAN_PORT  = 5005
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((JETSON_IP, JETSON_PORT))
-sock.settimeout(0.08)   # 80ms — laisse la place au 10Hz sans bloquer trop longtemps
+sock.settimeout(0.08)
 
 # ---- Init ----
 frame_id    = 0
-period_s    = 0.1
+period_s    = 0.1   # 10 Hz
 mapper      = TableMapper()
 world       = init_world("zones.json")
 runner      = JetsonStrategyRunner("scenario.json")
-maman_state = {}   # dernier état connu de maman (rempli par l'ACK)
+maman_state = {}
 
 
 def world_to_dict(w):
@@ -50,7 +49,7 @@ def world_to_dict(w):
     }
 
 
-print(f"[jetson] démarrage → maman {MAMAN_IP}:{MAMAN_PORT}")
+print(f"[jetson] d�marrage \u2192 maman {MAMAN_IP}:{MAMAN_PORT}")
 
 while True:
     t0 = time.time()
@@ -66,7 +65,7 @@ while True:
 
     update_world_state(world, objects, mapper)
 
-    # 2) Stratégie — on passe l'état maman du cycle précédent
+    # 2) Strat�gie (avec �vitement int�gr�)
     cmd = runner.step(world, maman_state)
     cmd_dict = cmd.to_dict() if cmd is not None else None
 
@@ -79,37 +78,42 @@ while True:
         "world":      world_to_dict(world),
         "command":    cmd_dict,
     }
-    payload = json.dumps(msg).encode("utf-8")
-    sock.sendto(payload, (MAMAN_IP, MAMAN_PORT))
+    sock.sendto(json.dumps(msg).encode("utf-8"), (MAMAN_IP, MAMAN_PORT))
     t_send = time.time()
 
     # 4) ACK maman
     try:
-        data, addr = sock.recvfrom(65535)
+        data, _ = sock.recvfrom(65535)
         ack = json.loads(data.decode("utf-8"))
-
         if ack.get("type") == "ack" and ack.get("frame_id") == frame_id:
             rtt_ms      = (time.time() - t_send) * 1000.0
-            maman_state = ack.get("robot_state", {})   # ← état maman mis à jour
+            maman_state = ack.get("robot_state", {})
 
             if frame_id % 10 == 0:
-                status = runner.status()
+                st = runner.status()
+                # Ic�ne �tat �vitement
+                avoid_icon = {
+                    "NORMAL":          "  \u2713",
+                    "AVOID_STOPPED":   "  \u23f8 STOP",
+                    "AVOID_DETOURING": "  \u21aa D�TOUR",
+                }.get(st["avoid_state"], st["avoid_state"])
+
                 print(
-                    f"[jetson] frame={frame_id:4d} "
+                    f"[jetson] f={frame_id:4d} "
                     f"rtt={rtt_ms:4.1f}ms "
-                    f"étape={status['plan_idx']}/{status['plan_total']} "
-                    f"state={status['state']:<18} "
+                    f"�tape={st['plan_idx']}/{st['plan_total']} "
+                    f"state={st['state']:<16} "
+                    f"avoid={avoid_icon:<18} "
                     f"cmd={cmd_dict['kind'] if cmd_dict else 'None':<14} "
-                    f"maman_action={maman_state.get('action','?')}"
+                    f"maman={maman_state.get('action','?')}"
                 )
         else:
             maman_state = {}
-
     except socket.timeout:
-        maman_state = {}   # pas d'ACK → on repart sans état maman
+        maman_state = {}
         if frame_id % 20 == 0:
             print(f"[jetson] frame={frame_id} ACK TIMEOUT")
 
-    # 5) Cadencer
+    # 5) Cadencer � 10 Hz
     elapsed = time.time() - t0
     time.sleep(max(0.0, period_s - elapsed))
