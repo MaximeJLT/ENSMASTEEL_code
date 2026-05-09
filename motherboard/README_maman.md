@@ -157,12 +157,3 @@ Puis lance avec les bons chemins :
 | `JSON parse error` côté maman | La Jetson envoie du non-JSON ou tronqué. Affiche `n` et `buf` pour debug. |
 
 ---
-
-## 7. Ce qu'il reste à faire après ce soir
-
-- [ ] Récupérer les vraies fonctions des collègues, vérifier que leurs cartes parsent bien `GOTO/PICK/DROP/...`
-- [ ] Brancher les vraies cartes UART, identifier les `/dev/ttyUSB*`
-- [ ] Tester un GOTO physique simple
-- [ ] Ajouter le freinage d'urgence local sur OBST (si demandé)
-- [ ] Régler les vitesses / tolérances avec les collègues moteurs
-- [ ] Faire des règles udev pour stabiliser les noms de ports
