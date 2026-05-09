@@ -68,12 +68,20 @@ class CursorState:
     y_mm: float
 
 @dataclass
+class OpponentState:
+    x_mm: float
+    y_mm: float
+    theta_rad: float = 0.0
+    radius_mm: float = 180.0   # rayon physique du robot adverse (encombrement)
+
+@dataclass
 class WorldState:
     t_s: float = 0.0
     match_duration_s: float = 100.0
     match_finished: bool = False
 
     robot: RobotState = field(default_factory=lambda: RobotState(0.0, 0.0, 0.0))
+    opponent: Optional["OpponentState"] = None      # None = pas d'adversaire simulé
     crates: Dict[int, CrateState] = field(default_factory=dict)
     checkpoints: Dict[int, CheckpointState] = field(default_factory=dict)
     zones: Dict[str, RectZone] = field(default_factory=dict)
@@ -437,3 +445,193 @@ class SimEngine:
                 world.score_breakdown["return"] = 0
 
         world.score = sum(world.score_breakdown.values())
+
+# -------------------- Opponent Simulator --------------------
+
+class OpponentSimulator:
+    """
+    Simule un robot adverse se déplaçant selon une liste de waypoints (patrouille).
+    Si aucun waypoint n'est fourni, l'adversaire reste immobile.
+
+    Usage dans la boucle principale :
+        opp_sim = OpponentSimulator(world, waypoints=[...], speed_mm_s=400)
+        # à chaque tick :
+        opp_sim.step(world, dt)
+    """
+
+    def __init__(
+        self,
+        world: WorldState,
+        start_x: float = 1200.0,
+        start_y: float = 600.0,
+        waypoints: Optional[List[Tuple[float, float]]] = None,
+        speed_mm_s: float = 400.0,
+        loop: bool = True,
+    ):
+        world.opponent = OpponentState(x_mm=start_x, y_mm=start_y)
+        self.waypoints: List[Tuple[float, float]] = waypoints or []
+        self.wp_idx: int = 0
+        self.speed: float = speed_mm_s
+        self.loop: bool = loop
+        self._arrival_tol: float = 40.0
+
+    # ------------------------------------------------------------------
+    def step(self, world: WorldState, dt: float) -> None:
+        opp = world.opponent
+        if opp is None or world.match_finished:
+            return
+
+        if not self.waypoints:
+            return   # immobile
+
+        # Cible courante
+        tx, ty = self.waypoints[self.wp_idx]
+        dx, dy = tx - opp.x_mm, ty - opp.y_mm
+        dist = math.hypot(dx, dy)
+
+        if dist < self._arrival_tol:
+            # Waypoint atteint → waypoint suivant
+            next_idx = self.wp_idx + 1
+            if next_idx >= len(self.waypoints):
+                if self.loop:
+                    self.wp_idx = 0
+                # else : adversaire s'arrête au dernier waypoint
+            else:
+                self.wp_idx = next_idx
+            return
+
+        # Déplacement
+        move = min(self.speed * dt, dist)
+        opp.x_mm += move * (dx / dist)
+        opp.y_mm += move * (dy / dist)
+        opp.theta_rad = math.atan2(dy, dx)
+
+# -------------------- Opponent Strategy (adversaire strat�gique) --------------------
+
+class OpponentStrategy:
+    """
+    Adversaire qui ex�cute son propre plan d'actions (GOTO / PICKUP / DROP),
+    comme notre robot. Il joue les caisses jaunes et d�pose dans les pantries.
+    
+    Le plan est charge depuis un fichier JSON s�par� (opponent_scenario.json).
+    """
+
+    def __init__(
+        self,
+        world: WorldState,
+        scenario_path: str = "opponent_scenario.json",
+        speed_mm_s: float = 450.0,
+    ):
+        # Charger le plan adverse depuis le JSON
+        with open(scenario_path, "r", encoding="utf-8") as f:
+            sc = json.load(f)
+
+        # Position de depart
+        rs = sc.get("robot_start", {"x_mm": -1200, "y_mm": 800})
+        world.opponent = OpponentState(x_mm=rs["x_mm"], y_mm=rs["y_mm"])
+
+        # Plan d'actions
+        self.plan: List[dict] = sc.get("strategy_plan", [])
+        self.plan_idx: int = 0
+
+        # Caisses portees par l'adversaire
+        self.carried_ids: List[int] = []
+
+        # Param�tres physiques
+        self.speed: float = speed_mm_s
+        self.arrival_eps: float = 30.0
+        self.pickup_eps: float = 150.0
+
+        # Timer pour les actions instantanees (PICKUP / DROP) \u2014 l'adversaire 
+        # met une seconde pour ramasser ou deposer, comme nous
+        self.action_timer: float = 0.0
+        self.action_state: str = "idle"  # idle | picking | dropping
+
+    # ------------------------------------------------------------------
+    def step(self, world: WorldState, dt: float) -> None:
+        """� appeler � chaque tick (comme OpponentSimulator.step)."""
+        opp = world.opponent
+        if opp is None or world.match_finished:
+            return
+
+        # Si une action en cours (pickup ou drop) \u2192 decompter le timer
+        if self.action_state in ("picking", "dropping"):
+            self.action_timer -= dt
+            if self.action_timer <= 0.0:
+                self.action_state = "idle"
+            else:
+                return  # encore en train de faire l'action
+
+        # Plan termin� \u2192 on ne bouge plus
+        if self.plan_idx >= len(self.plan):
+            return
+
+        step = self.plan[self.plan_idx]
+        kind = step.get("type", "")
+
+        # ---- GOTO ----
+        if kind == "GOTO":
+            tx = float(step["x_mm"])
+            ty = float(step["y_mm"])
+            dx, dy = tx - opp.x_mm, ty - opp.y_mm
+            dist = math.hypot(dx, dy)
+
+            if dist < self.arrival_eps:
+                # Arrive \u2192 etape suivante
+                self.plan_idx += 1
+            else:
+                # Avancer
+                move = min(self.speed * dt, dist)
+                opp.x_mm += move * (dx / dist)
+                opp.y_mm += move * (dy / dist)
+                opp.theta_rad = math.atan2(dy, dx)
+
+        # ---- PICKUP_NEARBY ----
+        elif kind == "PICKUP_NEARBY":
+            picked = 0
+            for c in world.crates.values():
+                if c.carried or c.delivered:
+                    continue
+                if c.color != "yellow":  # l'adversaire ne joue que les jaunes
+                    continue
+                d = math.hypot(c.x_mm - opp.x_mm, c.y_mm - opp.y_mm)
+                if d <= self.pickup_eps:
+                    c.carried = True
+                    self.carried_ids.append(c.id)
+                    picked += 1
+
+            if picked > 0:
+                print(f"  Opp  : ramasse {picked} caisse(s) jaune(s)")
+            self.action_state = "picking"
+            self.action_timer = 1.0
+            self.plan_idx += 1
+
+        # ---- DROP_ALL ----
+        elif kind == "DROP_ALL":
+            zone_name = step.get("zone_name", "")
+            if zone_name in world.zones and self.carried_ids:
+                zone = world.zones[zone_name]
+                if zone.contains(opp.x_mm, opp.y_mm):
+                    for cid in self.carried_ids:
+                        if cid in world.crates:
+                            c = world.crates[cid]
+                            c.carried = False
+                            c.delivered = True
+                            c.delivered_zone = zone_name
+                            c.x_mm = opp.x_mm
+                            c.y_mm = opp.y_mm
+                    print(f"  Opp  : d�pose {len(self.carried_ids)} caisse(s) dans '{zone_name}'")
+                    self.carried_ids.clear()
+                    self.action_state = "dropping"
+                    self.action_timer = 0.8
+            self.plan_idx += 1
+
+        else:
+            # Type inconnu \u2192 on ignore et on passe
+            self.plan_idx += 1
+
+        # Garder les caisses portees collees à l'adversaire
+        for cid in self.carried_ids:
+            if cid in world.crates:
+                world.crates[cid].x_mm = opp.x_mm
+                world.crates[cid].y_mm = opp.y_mm
