@@ -1,32 +1,44 @@
 # État du projet — Eurobot 2026 "Winter is Coming"
-## Document de consolidation · Vision / Stratégie / Communication
+## Document V1 final · Vision / Stratégie / Communication / Maman
 
 ---
 
 ## 1. Vue d'ensemble
 
-Le système est une **caméra overhead Jetson** qui voit toute la table, localise les objets via ArUco, et pilote un robot ("maman") via UDP. Le simulateur (`main_simu.py`) sert à valider la stratégie de jeu avant déploiement réel.
+Le système est composé de **trois couches** :
+
+1. **Jetson** (PC NVIDIA + caméra overhead) : voit la table, calcule la stratégie
+2. **Maman** (Raspberry Pi sur le robot) : dispatche les ordres entre Jetson et bas niveau
+3. **Cartes esclaves** (3 cartes : moteurs, actionneurs, LiDAR) : exécution physique
 
 ```
-Caméra overhead
-      │  ArUco DICT_4X4_50
-      ▼
-vision_aruco.py  ──────────────────────────────────────────────────┐
-      │  objects[], table_markers{}                                  │
-      ▼                                                              │
-mapping.py (TableMapper)                                            │
-      │  homographie pixel → mm (4 coins ArUco fixes)               │
-      ▼                                                              │
-world_updater.py  →  WorldState  (world_state.py)                   │
-                          │                                          │
-                   JetsonStrategyRunner  (jetson_strategy_v2.py)    │
-                          │  Command                                 │
-                          ▼                                          │
-                   json_main_v3.py  ──── UDP 10Hz ──►  Maman        │
-                          ◄──────── ACK + robot_state ──────────────┘
+┌───────────────────────────────────────────────────────────┐
+│                       JETSON (PC)                         │
+│                                                           │
+│   Caméra ─► vision_aruco ─► world_updater ─► WorldState  │
+│                                              │            │
+│                              JetsonStrategyRunner         │
+│                                              │            │
+│                                          Command          │
+└───────────────────────────────────────────────┬──────────┘
+                                                │ UDP/JSON 5005
+                                                │ ◄──── 5006 ACK
+                              ┌─────────────────▼──────────┐
+                              │      MAMAN (Raspberry Pi)  │
+                              │           maman.cpp        │
+                              │       (dispatcher pur)     │
+                              └─┬─────────┬──────────┬─────┘
+                                │         │          │
+                            UART          UART       UART
+                            115200        115200     115200
+                                │         │          │
+                          ┌─────▼──┐ ┌────▼────┐ ┌───▼────┐
+                          │ Carte  │ │ Carte   │ │ Carte  │
+                          │moteurs │ │actionn. │ │ LiDAR  │
+                          └────────┘ └─────────┘ └────────┘
 ```
 
-Le simulateur (`main_simu.py`) est un **miroir indépendant** du même système :
+Le simulateur (`main_simu.py`) est un **miroir indépendant** qui rejoue le même système sans hardware ni Jetson :
 
 ```
 sim_core.py (WorldState sim, SimEngine physique)
@@ -38,36 +50,50 @@ sim_render.py (matplotlib)
 
 ---
 
-## 2. Fichiers du projet — rôle de chacun
+## 2. Organisation du repo
 
-### Pipeline production (Jetson)
+```
+ensmasteel_comms_v1/
+│
+├── README.md                   ← projet, qui fait quoi, lancement rapide
+├── .gitignore
+│
+├── maman/                      ← TOURNE SUR LA RASPBERRY PI EN MATCH
+│   ├── maman.cpp               ← dispatcher UDP↔UART (C++17)
+│   └── README.md               ← build + run sur la Pi
+│
+├── jetson/                     ← TOURNE SUR LA JETSON EN MATCH
+│   ├── json_main.py            ← entrypoint match (vision→stratégie→UDP)
+│   ├── json_strategy.py        ← JetsonStrategyRunner, machine à états
+│   ├── vision_aruco.py         ← capture caméra, détection ArUco
+│   ├── mapping.py              ← homographie pixel → table mm
+│   ├── world_state.py          ← classes Robot/Caisse/Opponent/Zone
+│   ├── world_init.py           ← chargement initial depuis zones.json
+│   ├── world_updater.py        ← classification détections → WorldState
+│   ├── zones.json              ← géométrie des zones (mm)
+│   └── scenario.json           ← position départ + strategy_plan
+│
+├── docs/                       ← DOC POUR L'ÉQUIPE
+│   ├── PROTOCOL_UART.md        ← contrat avec collègues cartes esclaves
+│   └── Eurobot2026_Rules_1_0_FR.pdf
+│
+└── simu/                       ← OUTILS DEV — NE TOURNE PAS EN MATCH
+    ├── README.md               ← procédure de test sans hardware
+    ├── main_simu.py            ← simulateur pur matplotlib
+    ├── sim_core.py             ← WorldState sim, SimEngine, scoring
+    ├── sim_render.py           ← rendu matplotlib temps réel
+    ├── strategy_runner.py      ← StrategyRunner (miroir de json_strategy)
+    ├── maman_fictive.py        ← maman simulée Python (legacy, encore utile)
+    ├── Fake_motor_card.py      ← simule la carte moteurs en UART
+    ├── Fake_actuator_card.py   ← simule la carte actionneurs
+    ├── Fake_lidar_card.py      ← simule la carte LiDAR
+    ├── test_maman.py           ← validateur de maman.cpp (sans Jetson)
+    ├── genetic.py              ← optimisation stratégie (futur)
+    ├── test_individual.py
+    └── opponent_scenario*.json ← scénarios adversaire pour la simu
+```
 
-| Fichier | Rôle |
-|---------|------|
-| `vision_aruco.py` | Capture caméra, détection ArUco, retourne `objects` + `table_markers` |
-| `mapping.py` | `TableMapper` : homographie 4 coins → pixel→mm, `pixel_to_world()` |
-| `world_state.py` | Classes `Robot`, `Caisse`, `Opponent`, `Zone`, `WorldState` (conteneurs d'état) |
-| `world_init.py` | Charge `zones.json` et initialise le `WorldState` |
-| `world_updater.py` | Classe les détections en robot/adversaire/caisse, remplit le `WorldState` |
-| `json_main.py` | **Boucle principale** — vision→world→stratégie→UDP avec `command` |
-| `jetson_strategy.py` | `JetsonStrategyRunner` — exécute `strategy_plan` de `scenario.json`, machine à états, attente `action_done` maman |
-| `maman_fictive.py` | **Simulateur maman** — exécute vraiment GOTO/PICKUP/DROP, renvoie `robot_state` |
-
-### Simulateur (validation stratégie)
-
-| Fichier | Rôle |
-|---------|------|
-| `main_simu.py` | Boucle principale simulateur (20 Hz) |
-| `sim_core.py` | `WorldState` sim, `SimEngine` physique (holonome 500mm/s), scoring Eurobot |
-| `sim_render.py` | Rendu matplotlib : table, zones, robot, caisses, score en temps réel |
-| `strategy_runner.py` | `StrategyRunner` sim — même logique que `jetson_strategy.py` |
-
-### Configuration
-
-| Fichier | Contenu |
-|---------|---------|
-| `zones.json` | 8 garde-mangers, nid, table (dimensions mm, origine centre table) |
-| `scenario.json` | Position départ robot, caisses, `strategy_plan` séquentiel |
+> **Principe** : sur le robot et sur la Jetson, on clone le repo et on n'utilise que `maman/` ou `jetson/`. Le dossier `simu/` n'est nécessaire que pour le développement et la validation.
 
 ---
 
@@ -89,40 +115,33 @@ Unité    : millimètres
 | Zone | x_mm | y_mm |
 |------|------|------|
 | Nid bleu (notre départ) | 975 → 1325 | 625 → 975 |
-| Nid jaune (adversaire) | ≈ -1325 → -975 | 625 → 975 |
-| Garde-mangers 1–8 | voir zones.json | voir zones.json |
-| Curseur départ | 1250 | −1000 (bord table) |
+| Nid jaune (adversaire)  | -1325 → -975 | 625 → 975 |
+| Garde-mangers 1–8 | voir `zones.json` | voir `zones.json` |
+| Curseur départ | 1250 | -1000 |
 
 ---
 
-## 4. IDs ArUco — état actuel
+## 4. IDs ArUco
 
-Dictionnaire utilisé : **DICT_4X4_50** (OpenCV)
+Dictionnaire OpenCV : **DICT_4X4_50**
 
-| Usage | ID(s) | Statut |
-|-------|-------|--------|
-| Coin TL table | 21 | ✅ défini dans `vision_aruco.py` |
-| Coin TR table | 23 | ✅ défini |
-| Coin BR table | 22 | ✅ défini |
-| Coin BL table | 20 | ✅ défini |
-| Caisse bleue | 36 (règlement officiel) | ✅ règlement p.8 |
-| Caisse jaune | 47 (règlement officiel) | ✅ règlement p.8 |
-| Caisse vide | 41 (règlement officiel) | ✅ règlement p.8 |
-| **Notre robot** | **❌ À DÉFINIR** | À renseigner dans `world_updater.py` → `ROBOT_IDS` |
-| **Adversaire** | **❌ À DÉFINIR** | À renseigner dans `world_updater.py` → `OPPONENT_IDS` |
-
-> **Action requise** : choisir un ID ArUco pour notre robot (ex: 10) et mettre à jour :
-> ```python
-> # world_updater.py
-> ROBOT_IDS    = {10}   # ← remplacer None par l'ID choisi
-> OPPONENT_IDS = {11}   # ← si on veut tracker l'adversaire
-> ```
+| Usage | ID | Statut |
+|-------|----|----|
+| Coin TL table | 21 | ✅ |
+| Coin TR table | 23 | ✅ |
+| Coin BR table | 22 | ✅ |
+| Coin BL table | 20 | ✅ |
+| Caisse bleue  | 36 | ✅ règlement |
+| Caisse jaune  | 47 | ✅ règlement |
+| Caisse vide   | 41 | ✅ règlement |
+| **Notre robot**   | **❌ à définir** | À renseigner dans `world_updater.py → ROBOT_IDS` |
+| **Adversaire**    | **❌ à définir** | À renseigner dans `world_updater.py → OPPONENT_IDS` |
 
 ---
 
-## 5. Protocole UDP Jetson ↔ Maman
+## 5. Protocole UDP (Jetson ↔ Maman)
 
-### Jetson → Maman (port 5005, 10 Hz)
+### Jetson → Maman, port 5005, à 10 Hz
 
 ```json
 {
@@ -134,7 +153,7 @@ Dictionnaire utilisé : **DICT_4X4_50** (OpenCV)
     "robot":    {"x_mm": 1150.0, "y_mm": 200.0, "theta_rad": -1.57},
     "opponent": {"x_mm": -800.0, "y_mm": 300.0, "theta_rad": 0.0},
     "caisses":  [{"id": 36, "x_mm": 1150.0, "y_mm": 200.0, "status": "on_ground"}],
-    "zones":    ["our_nest", "pantry_1", ...],
+    "zones":    ["our_nest", "pantry_1"],
     "matchtime": 12.4
   },
   "command": {
@@ -145,18 +164,16 @@ Dictionnaire utilisé : **DICT_4X4_50** (OpenCV)
 }
 ```
 
-**Types de `command.kind`** :
+| `command.kind` | Champs | Description |
+|----------------|--------|-------------|
+| `GOTO`         | `x_mm`, `y_mm`              | Naviguer vers ce point |
+| `PICKUP`       | `crate_id`                  | Saisir une caisse (robot en position) |
+| `DROP_ALL`     | `zone_name` (info seulement)| Lâcher toutes les caisses |
+| `MOVE_CURSOR`  | `x_mm`, `y_mm`              | Pousser le curseur thermomètre |
+| `STOP`         | —                           | Arrêt immédiat |
+| `null`         | —                           | Heartbeat sans ordre |
 
-| Kind | Champs supplémentaires | Description |
-|------|----------------------|-------------|
-| `GOTO` | `x_mm`, `y_mm` | Naviguer vers ce point |
-| `PICKUP` | `crate_id` | Fermer les bras (robot déjà en position) |
-| `DROP_ALL` | `zone_name` | Ouvrir les bras (robot déjà en zone) |
-| `MOVE_CURSOR` | `x_mm`, `y_mm`, `from_x_mm`, `from_y_mm` | Tirer le curseur thermomètre |
-| `STOP` | — | Arrêt immédiat |
-| `null` | — | Rien à faire ce cycle |
-
-### Maman → Jetson (port 5006, ACK)
+### Maman → Jetson, port 5006, ACK pour chaque message reçu
 
 ```json
 {
@@ -164,30 +181,109 @@ Dictionnaire utilisé : **DICT_4X4_50** (OpenCV)
   "frame_id": 42,
   "t_ms":     1234567891,
   "robot_state": {
-    "x_mm":       1148.0,
-    "y_mm":       198.0,
-    "theta_rad":  -1.57,
-    "action":     "going",
-    "action_done": false,
-    "carried_count": 0
+    "x_mm":               1148.0,
+    "y_mm":               198.0,
+    "theta_rad":          -1.57,
+    "action":             "going",
+    "carried":            [36, 41],
+    "obstacle":           false,
+    "obstacle_dist_mm":   0.0,
+    "obstacle_angle_rad": 0.0
   }
 }
 ```
 
-> **`action_done: true`** est le signal clé que la Jetson attend pour passer à l'étape suivante du plan. Sans ce signal, le `JetsonStrategyRunner` a un timeout de secours (GOTO: 30s, PICKUP: 3s, DROP: 2.5s).
+> **Évolution V1** : `carried` (liste d'IDs) remplace `carried_count`. `action_done` n'est plus envoyé explicitement — la Jetson détecte le passage `going` → `idle` comme signal d'arrivée. Les 3 champs `obstacle*` sont ajoutés pour forwarder les données LiDAR.
 
 ---
 
-## 6. `JetsonStrategyRunner` — machine à états
+## 6. Protocole UART (Maman ↔ Cartes esclaves) — NOUVEAU EN V1
+
+### Paramètres communs
+
+| Paramètre | Valeur |
+|---|---|
+| Baud | 115200 |
+| Format | 8N1 |
+| Flow control | aucun |
+| Encodage | ASCII, lignes terminées par `\n` |
+
+### 6.1 — Carte moteurs (`/dev/ttyUSB0`)
+
+**Maman → Carte :**
+- `GOTO <x_mm> <y_mm>\n`
+- `STOP\n`
+- `STATUS\n` (optionnel)
+
+**Carte → Maman :**
+- `POS <x> <y> <theta>\n` — push à 10 Hz minimum
+- `DONE\n` — cible GOTO atteinte
+- `ERR <message>\n`
+
+### 6.2 — Carte actionneurs (`/dev/ttyUSB1`)
+
+**Maman → Carte :**
+- `PICK\n` — fermer les bras
+- `DROP\n` — ouvrir les bras
+- `STATUS\n`
+
+**Carte → Maman :**
+- `STATUS <state>\n` — state ∈ {idle, picking, dropping}
+- `DONE\n`
+- `ERR <message>\n`
+
+### 6.3 — Carte LiDAR (`/dev/ttyUSB2`)
+
+**Carte → Maman uniquement :**
+- `OBST <dist_mm> <angle_rad>\n`
+- `CLEAR\n`
+
+> Le détail complet, les exemples et le squelette de code à donner aux collègues sont dans `docs/PROTOCOL_UART.md`.
+
+---
+
+## 7. Architecture interne de maman.cpp
+
+Boucle principale **single-thread** avec `poll()` sur 4 file descriptors :
+
+```cpp
+while (true) {
+    poll(fds, 4, 50);  // UDP socket + 3 ports série, timeout 50ms
+
+    // 1. Lire toutes les lignes UART en attente
+    while (motor_port.read_line(line))    motor.on_line(line);
+    while (actuator_port.read_line(line)) actuator.on_line(line);
+    while (lidar_port.read_line(line))    lidar.on_line(line);
+
+    // 2. Si paquet UDP de la Jetson :
+    //    - parser le JSON
+    //    - dispatcher la commande sur la bonne carte UART
+    //    - construire l'ACK avec l'état courant
+    //    - renvoyer l'ACK
+}
+```
+
+**Maman ne contient AUCUNE logique métier.** Pas de stratégie, pas de calcul de trajectoire, pas de décision. Elle traduit JSON → texte UART et inversement. Toute l'intelligence reste sur la Jetson, tout l'asservissement reste dans les cartes esclaves.
+
+**Build :**
+```bash
+sudo apt install nlohmann-json3-dev
+cd maman
+g++ -std=c++17 -O2 maman.cpp -o maman
+```
+
+---
+
+## 8. JetsonStrategyRunner — machine à états
 
 ```
             ┌─────────────────────────────────────────────┐
             │                                             │
     IDLE ──►  _next_step()                                │
-            │     GOTO      → WAITING_GOTO                │
-            │     PICKUP    → WAITING_PICKUP              │
-            │     DROP_ALL  → WAITING_DROP                │
-            │     CURSOR    → WAITING_CURSOR              │
+            │     GOTO        → WAITING_GOTO              │
+            │     PICKUP      → WAITING_PICKUP            │
+            │     DROP_ALL    → WAITING_DROP              │
+            │     MOVE_CURSOR → WAITING_CURSOR            │
             └─────────────────────────────────────────────┘
                     │ action_done OU arrivée vision OU timeout
                     ▼
@@ -195,103 +291,166 @@ Dictionnaire utilisé : **DICT_4X4_50** (OpenCV)
 ```
 
 **Confirmation d'arrivée GOTO** (double source, première à confirmer l'emporte) :
-1. `robot_state.action_done == true` (odométrie maman)
-2. Distance vision < 60 mm de la cible (ArUco robot visible)
+1. Transition `robot_state.action: going → idle` dans l'ACK maman
+2. Distance vision < `ARRIVAL_TOL` (60 mm) du target
 
 ---
 
-## 7. Paramètres à ajuster avant test réel
+## 9. Paramètres à ajuster avant test réel
 
 | Paramètre | Fichier | Valeur actuelle | À vérifier |
 |-----------|---------|-----------------|------------|
 | `ROBOT_IDS` | `world_updater.py` | `{None}` | **ID ArUco à définir** |
 | `OPPONENT_IDS` | `world_updater.py` | `{None}` | ID ArUco adversaire |
-| `ARRIVAL_TOL` | `jetson_strategy_v2.py` | 60 mm | Distance arrivée GOTO |
-| `PICKUP_RANGE` | `jetson_strategy_v2.py` | 150 mm | Portée bras |
-| `PICKUP_TIMEOUT_S` | `jetson_strategy_v2.py` | 3.0 s | Durée fermeture bras |
-| `DROP_TIMEOUT_S` | `jetson_strategy_v2.py` | 2.5 s | Durée ouverture bras |
-| `GOTO_TIMEOUT_S` | `jetson_strategy_v2.py` | 30.0 s | Timeout GOTO max |
-| `world_corners_mm` | `mapping.py` | ±1500 / ±1000 | Dimensions table (à confirmer si décalage) |
-| `USE_CAMERA` | `vision_aruco.py` | `True` | Passer à `False` pour tests sans caméra |
-| `MAMAN_IP` | `json_main_v3.py` | `127.0.0.1` | IP réelle de maman sur le réseau |
+| `ARRIVAL_TOL` | `json_strategy.py` | 60 mm | Distance arrivée GOTO |
+| `PICKUP_RANGE` | `json_strategy.py` | 150 mm | Portée bras |
+| `PICKUP_TIMEOUT_S` | `json_strategy.py` | 3.0 s | Durée fermeture bras |
+| `DROP_TIMEOUT_S` | `json_strategy.py` | 2.5 s | Durée ouverture bras |
+| `GOTO_TIMEOUT_S` | `json_strategy.py` | 30.0 s | Timeout GOTO max |
+| `world_corners_mm` | `mapping.py` | ±1500 / ±1000 | Dimensions table |
+| `USE_CAMERA` | `vision_aruco.py` | `True` | `False` pour tests sans caméra |
+| `MAMAN_IP` | `json_main.py` | `127.0.0.1` | IP de la Pi sur le réseau |
+| Ports UART (maman) | argv[1..3] | `/dev/ttyUSB0/1/2` | À fixer avec règles udev |
 
 ---
 
-## 8. Questions ouvertes — décisions à prendre
+## 10. Validation V1 — état au 9 mai 2026
 
-### Priorité haute (bloque le test réel)
+### ✅ Validé
 
-- [ ] **ID ArUco robot** : choisir un ID (≠ 20/21/22/23/36/47/41) et coller le marqueur sur le robot
-- [ ] **Protocole maman** : est-ce que maman renvoie bien `action_done` dans son ACK ? Partager `protocole_jetson_maman.md` avec les collègues maman
-- [ ] **IP maman** : adresse IP de la carte de maman sur le réseau local
+- [x] Pipeline simulation pure (`main_simu.py`) — stratégie complète tournée et scorée
+- [x] `maman_fictive.py` — boucle Jetson↔maman simulée en UDP
+- [x] **`maman.cpp` compile et tourne sur Linux**
+- [x] **`maman.cpp` validée contre 3 fakes Python** via socat — voir test ci-dessous
+- [x] Protocole UART documenté dans `docs/PROTOCOL_UART.md`
+- [x] Test d'intégration `test_maman.py` validé avec succès :
+  - heartbeat → ACK correct
+  - GOTO (1000, -500) → mouvement progressif observable dans les ACK
+  - PICKUP → `carried` mis à jour
+  - DROP_ALL → `action: dropping` puis retour à `idle`
+  - STOP → accepté
 
-### Priorité moyenne
+### 🔲 À faire avant la coupe
 
-- [ ] **PAMI** 
-- [ ] **Odométrie maman** : dans quel repère maman exprime-t-elle sa position ? (table mm, ou repère local ?) → pour le recalage
-- [ ] **Nombre de PAMI** : 1 (grenier seulement) ou plusieurs ? 
-
-### Priorité basse (phase 2 et 3)
-
-- [ ] **Stratégies alternatives** : tester d'autres ordres dans `strategy_plan` de `scenario.json`
-- [ ] **Évitement adversaire** (phase 2 Safety/Avoid) : détecter et contourner `world.opponent`
-- [ ] **Optimisation NN** (phase 3) : réseau de neurones sur les paramètres de stratégie
-
----
-
-## 9. Comment lancer le système
-
-### Test simulation seule (sans robot ni caméra)
-
-```bash
-# Dans un terminal
-python main_simu.py
-# → Lance le simulateur matplotlib avec stratégie complète
-```
-
-### Test pipeline Jetson + maman fictive (sans robot réel)
-
-```bash
-# Terminal 1 — simulateur maman
-python maman_fictive_v2.py
-
-# Terminal 2 — Jetson (mettre USE_CAMERA=False dans vision_aruco.py)
-python json_main_v3.py
-```
-
-### Production (avec caméra et robot réel)
-
-```bash
-# S'assurer que USE_CAMERA=True dans vision_aruco.py
-# S'assurer que ROBOT_IDS est renseigné dans world_updater.py
-# S'assurer que MAMAN_IP pointe vers la carte de maman
-
-# Terminal 1 — démarrer maman (côté collègues)
-# Terminal 2 — Jetson
-python json_main_v3.py
-```
+- [ ] Tes collègues implémentent leur côté du protocole UART (3 cartes)
+- [ ] Test maman.cpp sur **vraies cartes** branchées en USB
+- [ ] Choisir un ID ArUco pour notre robot, le coller, mettre à jour `ROBOT_IDS`
+- [ ] Brancher la vraie caméra et lancer `json_main.py` (avec `opencv-contrib-python` installé)
+- [ ] Test intégration complète Jetson + maman + 3 cartes réelles
+- [ ] Régler les règles udev sur la Pi pour fixer les noms `/dev/ttyUSB*` au reboot
+- [ ] Définir `MAMAN_IP` (IP de la Pi sur le réseau du robot)
 
 ---
 
-## 10. Roadmap des phases
+## 11. Comment lancer le système
+
+### Test simulation pure (sans rien)
+
+```bash
+cd simu
+python3 main_simu.py
+```
+
+### Test maman seule (validation hors hardware)
+
+```bash
+# Terminal 1-3 : créer 3 paires de PTY virtuels
+socat -d -d pty,raw,echo=0,link=/tmp/tty_motor_master    pty,raw,echo=0,link=/tmp/tty_motor_slave &
+socat -d -d pty,raw,echo=0,link=/tmp/tty_actuator_master pty,raw,echo=0,link=/tmp/tty_actuator_slave &
+socat -d -d pty,raw,echo=0,link=/tmp/tty_lidar_master    pty,raw,echo=0,link=/tmp/tty_lidar_slave &
+
+# Terminal 4-6 : lancer les fakes
+cd simu
+python3 Fake_motor_card.py    /tmp/tty_motor_slave
+python3 Fake_actuator_card.py /tmp/tty_actuator_slave
+python3 Fake_lidar_card.py    /tmp/tty_lidar_slave
+
+# Terminal 7 : maman
+cd maman
+./maman /tmp/tty_motor_master /tmp/tty_actuator_master /tmp/tty_lidar_master
+
+# Terminal 8 : testeur (simule la Jetson)
+cd simu
+python3 test_maman.py
+```
+
+### Test pipeline Jetson + maman (avec fakes)
+
+Mêmes terminaux 1-7, puis :
+```bash
+# Terminal 8 : Jetson sans caméra (USE_CAMERA=False)
+cd jetson
+python3 json_main.py
+```
+
+### Production (jour J)
+
+**Sur la Raspberry Pi (maman) :**
+```bash
+cd maman
+./maman /dev/ttyUSB0 /dev/ttyUSB1 /dev/ttyUSB2
+```
+
+**Sur la Jetson :**
+```bash
+cd jetson
+python3 json_main.py
+```
+
+Deux machines, deux commandes. Aucun fichier de simu n'est nécessaire.
+
+---
+
+## 12. Roadmap
 
 ```
-Phase 1 — Stratégie déterministe (EN COURS)
+Phase 1 — Stratégie déterministe + Communication (TERMINÉE V1)
 ├── ✅ Pipeline vision → WorldState
 ├── ✅ Simulateur complet (sim_core + render + strategy_runner)
 ├── ✅ JetsonStrategyRunner (plan fixe scenario.json)
 ├── ✅ Protocole UDP Jetson ↔ Maman défini
-├── ✅ maman_fictive_v2 (test en boucle fermée)
-├── Mettre en place d'autres stratégies alternatives
+├── ✅ maman_fictive.py (test boucle fermée Python)
+├── ✅ maman.cpp (carte centrale C++ pour Raspberry Pi)
+├── ✅ Protocole UART Maman ↔ Cartes esclaves défini
+├── ✅ Fakes Python pour validation hors hardware
+└── ✅ Validation maman.cpp en intégration simulée
 
-Phase 2 — Safety / Avoid
-├── ○ Détection adversaire (OPPONENT_IDS à renseigner)
+Phase 2 — Test hardware (J-3 → J-0)
+├── ○ Cartes esclaves implémentent le protocole UART
+├── ○ Test sur vrai robot
+└── ○ Réglages fins (vitesses, tolérances, timeouts)
+
+Phase 3 — Safety / Avoid (post-coupe ou si temps)
+├── ○ Détection adversaire (OPPONENT_IDS)
 ├── ○ Modification dynamique du plan si adversaire en chemin
-└── ○ Comportement défensif (vol de garde-mangers)
+├── ○ Freinage d'urgence local sur OBST LiDAR
+└── ○ Comportement défensif
 
-Phase 3 — Optimisation NN
-├── ○ Définir les paramètres d'entrée (positions caisses, temps restant, score)
-├── ○ Définir la fonction de récompense (score Eurobot)
-├── ○ Entraînement sur le simulateur (sim_core comme environnement)
+Phase 4 — Optimisation NN (long terme)
+├── ○ Définir paramètres d'entrée
+├── ○ Fonction de récompense (score Eurobot)
+├── ○ Entraînement sur sim_core
 └── ○ Déploiement côté JetsonStrategyRunner
 ```
+
+---
+
+## 13. Questions ouvertes / décisions à prendre
+
+### Priorité haute (bloque le test réel)
+
+- [ ] **ID ArUco robot** : choisir un ID ≠ {20, 21, 22, 23, 36, 41, 47}
+- [ ] **Cartes esclaves** : tes collègues respectent-ils `PROTOCOL_UART.md` ?
+- [ ] **IP maman** : adresse de la Pi sur le réseau local
+
+### Priorité moyenne
+
+- [ ] **PAMI** : combien et où
+- [ ] **Repère odométrie** moteurs : est-ce bien le repère table mm centré ?
+- [ ] **Freinage d'urgence local** sur OBST LiDAR : à activer dans maman.cpp ?
+
+### Priorité basse
+
+- [ ] **Stratégies alternatives** dans `scenario.json`
+- [ ] **Évitement adversaire** dynamique
+- [ ] **Optimisation NN**
