@@ -188,15 +188,3 @@ void loop() {
 }
 ```
 
----
-
-## Questions ouvertes
-
-À me confirmer rapidement :
-
-1. **Repère** odométrie : centre table ou un coin ? (je préfère centre)
-2. **Bornes** vitesses moteurs : V_MAX assumé = 500 mm/s, OK ?
-3. **PICK** : c'est uniquement servo bras, ou aussi un ascenseur ?
-4. **LiDAR** : seuil de détection que vous comptez utiliser ?
-
-Je peux adapter maman pour n'importe quoi de ce côté, mais il me faut les valeurs.
