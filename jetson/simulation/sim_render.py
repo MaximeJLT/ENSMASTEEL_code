@@ -64,6 +64,22 @@ class Renderer:
                                          markersize=10, color="purple", zorder=5)
         self.start_plot, = self.ax.plot([], [], "ks", linestyle="", markersize=5, zorder=2)
 
+        # Adversaire
+        self.opp_plot, = self.ax.plot([], [], marker="s", linestyle="",
+                                      markersize=14, color="darkorange", zorder=5,
+                                      label="Adversaire")
+        self.opp_dir,  = self.ax.plot([], [], "-", color="saddlebrown",
+                                      linewidth=1.5, zorder=5)
+        # Cercle de danger (dynamique)
+        self._danger_circle = plt.Circle((0, 0), 450, color="orange",
+                                         fill=False, linestyle="--",
+                                         linewidth=1.0, alpha=0.5, zorder=4)
+        self.ax.add_patch(self._danger_circle)
+
+        # Waypoint de détour
+        self.detour_plot, = self.ax.plot([], [], marker="*", linestyle="",
+                                          markersize=14, color="gold", zorder=6)
+
         # Labels des IDs de caisses (dynamiques)
         self._crate_texts = {}
 
@@ -98,7 +114,7 @@ class Renderer:
         plt.tight_layout()
 
     # ------------------------------------------------------------------
-    def update(self):
+    def update(self, runner=None):
         import math
         w = self.world
 
@@ -111,6 +127,32 @@ class Renderer:
             [w.robot.x_mm, w.robot.x_mm + dx],
             [w.robot.y_mm, w.robot.y_mm + dy]
         )
+
+        # Adversaire
+        if w.opponent is not None:
+            opp = w.opponent
+            self.opp_plot.set_data([opp.x_mm], [opp.y_mm])
+            odx = arrow_len * math.cos(opp.theta_rad)
+            ody = arrow_len * math.sin(opp.theta_rad)
+            self.opp_dir.set_data(
+                [opp.x_mm, opp.x_mm + odx],
+                [opp.y_mm, opp.y_mm + ody]
+            )
+            self._danger_circle.set_center((opp.x_mm, opp.y_mm))
+            self._danger_circle.set_visible(True)
+        else:
+            self.opp_plot.set_data([], [])
+            self.opp_dir.set_data([], [])
+            self._danger_circle.set_visible(False)
+
+        # Waypoint de détour (si actif)
+        if runner is not None:
+            av = runner.avoid_status()
+            if av["state"] == "DETOURING" and av["detour_target"]:
+                dtx, dty = av["detour_target"]
+                self.detour_plot.set_data([dtx], [dty])
+            else:
+                self.detour_plot.set_data([], [])
 
         # Caisses
         cxs, cys, colors = [], [], []
@@ -211,6 +253,28 @@ class Renderer:
         lines.append("  \u25cf bleu   = au sol")
         lines.append("  \u25cf orange = portee")
         lines.append("  \u25cf gris   = livree")
+
+        # Adversaire
+        if w.opponent is not None:
+            opp = w.opponent
+            lines.append("")
+            lines.append("ADVERSAIRE")
+            lines.append(f"  x={opp.x_mm:>7.0f} mm")
+            lines.append(f"  y={opp.y_mm:>7.0f} mm")
+            dist_to_opp = math.hypot(opp.x_mm - robot.x_mm, opp.y_mm - robot.y_mm)
+            lines.append(f"  dist={dist_to_opp:>6.0f} mm")
+
+        # Évitement
+        if runner is not None:
+            av = runner.avoid_status()
+            avoid_icons = {"NORMAL": "OK", "STOPPED": "STOP", "DETOURING": "DETOUR"}
+            avoid_colors = {"NORMAL": "NORMAL", "STOPPED": "ARRETE", "DETOURING": "CONTOURNEMENT"}
+            lines.append("")
+            lines.append("EVITEMENT")
+            lines.append(f"  [{avoid_icons.get(av['state'], '?')}] {avoid_colors.get(av['state'], av['state'])}")
+            if av["state"] == "DETOURING" and av["detour_target"]:
+                dtx, dty = av["detour_target"]
+                lines.append(f"  wp=({dtx:.0f},{dty:.0f})")
 
         self.info_text.set_text("\n".join(lines))
 
