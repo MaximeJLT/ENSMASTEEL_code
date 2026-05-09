@@ -15,12 +15,12 @@ Le système est composé de **trois couches** :
 ┌───────────────────────────────────────────────────────────┐
 │                       JETSON (PC)                         │
 │                                                           │
-│   Caméra ─► vision_aruco ─► world_updater ─► WorldState  │
+│   Caméra ─► vision_aruco ─► world_updater ─► WorldState   │
 │                                              │            │
 │                              JetsonStrategyRunner         │
 │                                              │            │
 │                                          Command          │
-└───────────────────────────────────────────────┬──────────┘
+└───────────────────────────────────────────────┬───────────┘
                                                 │ UDP/JSON 5005
                                                 │ ◄──── 5006 ACK
                               ┌─────────────────▼──────────┐
@@ -61,6 +61,7 @@ ensmasteel_comms_v1/
 ├── maman/                      ← TOURNE SUR LA RASPBERRY PI EN MATCH
 │   ├── maman.cpp               ← dispatcher UDP↔UART (C++17)
 │   └── README.md               ← build + run sur la Pi
+│   └── PROTOCOL_UART.md        ← contrat avec collègues cartes esclaves
 │
 ├── jetson/                     ← TOURNE SUR LA JETSON EN MATCH
 │   ├── json_main.py            ← entrypoint match (vision→stratégie→UDP)
@@ -73,9 +74,6 @@ ensmasteel_comms_v1/
 │   ├── zones.json              ← géométrie des zones (mm)
 │   └── scenario.json           ← position départ + strategy_plan
 │
-├── docs/                       ← DOC POUR L'ÉQUIPE
-│   ├── PROTOCOL_UART.md        ← contrat avec collègues cartes esclaves
-│   └── Eurobot2026_Rules_1_0_FR.pdf
 │
 └── simu/                       ← OUTILS DEV — NE TOURNE PAS EN MATCH
     ├── README.md               ← procédure de test sans hardware
