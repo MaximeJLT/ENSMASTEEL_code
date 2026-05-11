@@ -1,4 +1,3 @@
-
 #include <SoftwareSerial.h>
 #include <SCServo.h>     
 #include <Wire.h>
@@ -34,12 +33,11 @@ void setup() {
   UART.begin(115200);
   sts.pSerial = &UART;
   if (!mcp.begin_I2C()) {
-    Serial.println("ERREUR : carte MCP23017 non trouvée !");
     while (1);
   }
   mcp.pinMode(VANNE_1, OUTPUT);
   mcp.digitalWrite(VANNE_1, LOW);
-  Serial.println("Bras robotique initialisé.");
+  Statut = "idle";
 }
 
 //  FONCTIONS : ELECTROVANNE
@@ -121,7 +119,7 @@ void Attraper(BrasRobotique bras) {
 }
 
 // Déposer un objet
-void sequenceDeposer(BrasRobotique bras) {
+void Deposer(BrasRobotique bras) {
     if((bras = bras1) ||(bras = bras4) ){
         positionBras(bras, 450, 450);
         delay(100);
@@ -140,8 +138,46 @@ void sequenceDeposer(BrasRobotique bras) {
     }
 }
 
+void traiterAlerte(String message) {
+    message.trim();   // on nettoie
+    // Exemple : on attend le texte "ALERT"
+    if (message.equalsIgnoreCase("PICK")) {
+        Serial.println("picking");
+        Attraper(bras1);
+        Attraper(bras2);
+        Attraper(bras3);
+        Attraper(bras4);
+        Serial.println("DONE");
+    }
+    else {
+        if (message.equalsIgnoreCase("DROP")) {
+            Serial.println("dropping");
+            Deposer(bras1);
+            Deposer(bras2);
+            Deposer(bras3);
+            Deposer(bras4);
+            Serial.println("DONE");
+        }
+        else{
+            Serial.println("idle");        
+        }
+    }
+}
+
+String bufferUART = "";
 
 
 void loop() {
-  null();
+    while (Serial1.available() > 0) {
+        char c = Serial1.read();
+        if (c == '\n' || c == '\r') {
+            if (bufferUART.length() > 0) {
+                traiterAlerte(bufferUART);
+                bufferUART = "";
+            }
+        }
+        else {
+            bufferUART += c;
+        }
+    }
 }
