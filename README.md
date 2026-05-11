@@ -328,18 +328,6 @@ g++ -std=c++17 -O2 maman.cpp -o maman
   - DROP_ALL → `action: dropping` puis retour à `idle`
   - STOP → accepté
 
-### 🔲 À faire avant la coupe
-
-- [ ] Tes collègues implémentent leur côté du protocole UART (3 cartes)
-- [ ] Test maman.cpp sur **vraies cartes** branchées en USB
-- [ ] Choisir un ID ArUco pour notre robot, le coller, mettre à jour `ROBOT_IDS`
-- [ ] Brancher la vraie caméra et lancer `json_main.py` (avec `opencv-contrib-python` installé)
-- [ ] Test intégration complète Jetson + maman + 3 cartes réelles
-- [ ] Régler les règles udev sur la Pi pour fixer les noms `/dev/ttyUSB*` au reboot
-- [ ] Définir `MAMAN_IP` (IP de la Pi sur le réseau du robot)
-
----
-
 ## 11. Comment lancer le système
 
 ### Test simulation pure (sans rien)
@@ -398,57 +386,3 @@ python3 json_main.py
 Deux machines, deux commandes. Aucun fichier de simu n'est nécessaire.
 
 ---
-
-## 12. Roadmap
-
-```
-Phase 1 — Stratégie déterministe + Communication (TERMINÉE V1)
-├── ✅ Pipeline vision → WorldState
-├── ✅ Simulateur complet (sim_core + render + strategy_runner)
-├── ✅ JetsonStrategyRunner (plan fixe scenario.json)
-├── ✅ Protocole UDP Jetson ↔ Maman défini
-├── ✅ maman_fictive.py (test boucle fermée Python)
-├── ✅ maman.cpp (carte centrale C++ pour Raspberry Pi)
-├── ✅ Protocole UART Maman ↔ Cartes esclaves défini
-├── ✅ Fakes Python pour validation hors hardware
-└── ✅ Validation maman.cpp en intégration simulée
-
-Phase 2 — Test hardware (J-3 → J-0)
-├── ○ Cartes esclaves implémentent le protocole UART
-├── ○ Test sur vrai robot
-└── ○ Réglages fins (vitesses, tolérances, timeouts)
-
-Phase 3 — Safety / Avoid (post-coupe ou si temps)
-├── ○ Détection adversaire (OPPONENT_IDS)
-├── ○ Modification dynamique du plan si adversaire en chemin
-├── ○ Freinage d'urgence local sur OBST LiDAR
-└── ○ Comportement défensif
-
-Phase 4 — Optimisation NN (long terme)
-├── ○ Définir paramètres d'entrée
-├── ○ Fonction de récompense (score Eurobot)
-├── ○ Entraînement sur sim_core
-└── ○ Déploiement côté JetsonStrategyRunner
-```
-
----
-
-## 13. Questions ouvertes / décisions à prendre
-
-### Priorité haute (bloque le test réel)
-
-- [ ] **ID ArUco robot** : choisir un ID ≠ {20, 21, 22, 23, 36, 41, 47}
-- [ ] **Cartes esclaves** : tes collègues respectent-ils `PROTOCOL_UART.md` ?
-- [ ] **IP maman** : adresse de la Pi sur le réseau local
-
-### Priorité moyenne
-
-- [ ] **PAMI** : combien et où
-- [ ] **Repère odométrie** moteurs : est-ce bien le repère table mm centré ?
-- [ ] **Freinage d'urgence local** sur OBST LiDAR : à activer dans maman.cpp ?
-
-### Priorité basse
-
-- [ ] **Stratégies alternatives** dans `scenario.json`
-- [ ] **Évitement adversaire** dynamique
-- [ ] **Optimisation NN**
