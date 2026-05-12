@@ -17,20 +17,8 @@ TABLE_CORNER_IDS = {
 }
 
 # Couleur d'équipe : "blue" ou "yellow"
-# Lire la couleur d'équipe depuis le fichier de config externe
-import os
-_color_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "team_color.txt")
-try:
-    with open(_color_file, "r") as f:
-        TEAM_COLOR = f.read().strip().lower()
-        if TEAM_COLOR not in ("blue", "yellow"):
-            print(f"[vision] ⚠️ team_color.txt contient '{TEAM_COLOR}' (attendu blue/yellow), fallback blue")
-            TEAM_COLOR = "blue"
-except FileNotFoundError:
-    print("[vision] ⚠️ team_color.txt introuvable, fallback blue")
-    TEAM_COLOR = "blue"
-
-print(f"[vision] TEAM_COLOR = {TEAM_COLOR}")
+# À CHANGER LE MATIN DU MATCH selon le tirage au sort
+TEAM_COLOR = "blue"
 
 # IDs ArUco selon le règlement Eurobot 2026
 CRATE_BLUE_ID  = 36
