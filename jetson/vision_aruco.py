@@ -2,12 +2,10 @@ import cv2
 import numpy as np
 import time
 
-#--------------------Test d'un algorithme de detection sur dataset connu----------------------------
-
-USE_CAMERA = True #on passera a TRUE quand on aura la camera
+USE_CAMERA = True
 CAM_INDEX = 0
 CAP_WIDTH = 1280
-CAP_HEIGHT = 720 #parametres openCV camera
+CAP_HEIGHT = 720
 
 _cap = None
 
@@ -18,14 +16,29 @@ TABLE_CORNER_IDS = {
     "BL": 20,
 }
 
+# Couleur d'équipe : "blue" ou "yellow"
+# Lire la couleur d'équipe depuis le fichier de config externe
+import os
+_color_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "team_color.txt")
+try:
+    with open(_color_file, "r") as f:
+        TEAM_COLOR = f.read().strip().lower()
+        if TEAM_COLOR not in ("blue", "yellow"):
+            print(f"[vision] ⚠️ team_color.txt contient '{TEAM_COLOR}' (attendu blue/yellow), fallback blue")
+            TEAM_COLOR = "blue"
+except FileNotFoundError:
+    print("[vision] ⚠️ team_color.txt introuvable, fallback blue")
+    TEAM_COLOR = "blue"
+
+print(f"[vision] TEAM_COLOR = {TEAM_COLOR}")
+
+# IDs ArUco selon le règlement Eurobot 2026
+CRATE_BLUE_ID  = 36
+CRATE_YELLOW_ID = 47
+CRATE_EMPTY_ID  = 41
+
+
 def _init_camera():
-
-    """
-    Initialise la camera si ce n'est pas deja fait.
-    Retourne True si la camera est prete, False sinon.
-    1 seule instance de camera est geree globalement.
-    """
-
     global _cap
     if _cap is not None:
         return True
@@ -42,19 +55,70 @@ def _init_camera():
     print("Camera initialized.")
     return True
 
-aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-detector = cv2.aruco.ArucoDetector(aruco_dict) #algo de detection aruco
 
-marker_id = 7
-marker_size_px = 400
+aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+
+# ---- PARAMÈTRES DE DÉTECTION OPTIMISÉS pour détecter MAX d'ArUcos ----
+params = cv2.aruco.DetectorParameters()
+
+# Améliorer la détection des marqueurs petits et éloignés
+params.adaptiveThreshWinSizeMin = 3
+params.adaptiveThreshWinSizeMax = 23
+params.adaptiveThreshWinSizeStep = 4
+params.adaptiveThreshConstant = 7
+
+# Taille minimale du marqueur (en proportion de l'image) — réduit pour voir les petits
+params.minMarkerPerimeterRate = 0.01   # défaut 0.03, on baisse pour voir les petits ArUcos
+params.maxMarkerPerimeterRate = 4.0
+
+# Précision des contours
+params.polygonalApproxAccuracyRate = 0.05
+params.minCornerDistanceRate = 0.05
+params.minDistanceToBorder = 3
+params.minMarkerDistanceRate = 0.05
+
+# Affinement des coins (sub-pixel, plus précis)
+params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+params.cornerRefinementWinSize = 5
+params.cornerRefinementMaxIterations = 30
+params.cornerRefinementMinAccuracy = 0.1
+
+# Marges de tolérance sur le contenu du marqueur
+params.markerBorderBits = 1
+params.perspectiveRemovePixelPerCell = 4
+params.perspectiveRemoveIgnoredMarginPerCell = 0.13
+
+# Tolérance sur les erreurs de décodage (plus permissif)
+params.maxErroneousBitsInBorderRate = 0.35
+params.errorCorrectionRate = 0.6
+
+detector = cv2.aruco.ArucoDetector(aruco_dict, params)
+
+
+def _id_to_team(detected_id):
+    """Retourne 'us', 'enemy', 'empty', ou None selon l'ID et notre couleur d'équipe."""
+    if detected_id == CRATE_EMPTY_ID:
+        return "empty"
+    if TEAM_COLOR == "blue":
+        if detected_id == CRATE_BLUE_ID:
+            return "us"
+        if detected_id == CRATE_YELLOW_ID:
+            return "enemy"
+    elif TEAM_COLOR == "yellow":
+        if detected_id == CRATE_YELLOW_ID:
+            return "us"
+        if detected_id == CRATE_BLUE_ID:
+            return "enemy"
+    return None
+
 
 def get_objects():
     """
-    Retourne une liste d'objets detectes sous la forme :
-    [{"id": int, "u_px": float, "v_px": float, "team":"unknown", "score_team": None}, ...]
+    Retourne (objects, table_markers).
+    objects = liste de tous les ArUcos détectés.
+    Chaque objet a un champ "team" : "us", "enemy", "empty", "unknown".
     """
 
-    # 1) Choix de la source image
     if USE_CAMERA and _init_camera():
         ret, frame = _cap.read()
         if not ret or frame is None:
@@ -63,54 +127,47 @@ def get_objects():
     else:
         frame = None
 
-    # 2) Fallback: scene simulée (comme avant)
     if frame is None:
+        # Fallback de test
         marker_id = 7
         marker_size_px = 400
         marker_img = cv2.aruco.generateImageMarker(aruco_dict, marker_id, marker_size_px)
-
         scene = np.full((600, 800), 255, dtype=np.uint8)
         y0, x0 = 100, 200
         scene[y0:y0+marker_size_px, x0:x0+marker_size_px] = marker_img
-
-        # detecteur attend une image (gray ou bgr). Ici c'est gray
         input_img = scene
         debug_img = cv2.cvtColor(scene, cv2.COLOR_GRAY2BGR)
-        H, W = debug_img.shape[:2]
     else:
-        # frame camera est BGR
         input_img = frame
         debug_img = frame.copy()
-        H, W = debug_img.shape[:2]
 
-    # 3) Detection ArUco
+    # Détection (avec les paramètres tunés)
     corners, ids, rejected = detector.detectMarkers(input_img)
 
     objects = []
     if ids is not None:
         for i in range(len(ids)):
-            pts = corners[i][0]  # (4,2)
+            pts = corners[i][0]
             u_center = float(pts[:, 0].mean())
             v_center = float(pts[:, 1].mean())
             detected_id = int(ids[i][0])
+
+            team = _id_to_team(detected_id) or "unknown"
 
             objects.append({
                 "id": detected_id,
                 "u_px": u_center,
                 "v_px": v_center,
-                "team": "unknown",
+                "team": team,
                 "score_team": None
             })
 
-    # ---- Détection des 4 ArUco de mapping (coins table) : PAR IDS ----
+    # Détection des 4 coins table
     table_markers = None
-
-    # On construit id -> corner uniquement avec les IDs renseignés (non None)
     id_to_corner = {v: k for k, v in TABLE_CORNER_IDS.items() if v is not None}
     table_ids = set(id_to_corner.keys())
 
     if len(table_ids) == 4:
-        # On récupère dans objects les 4 tags table
         found = {}
         for obj in objects:
             corner = id_to_corner.get(obj["id"])
@@ -120,25 +177,27 @@ def get_objects():
                     "u_px": obj["u_px"],
                     "v_px": obj["v_px"],
                 }
-
-        # Valide seulement si on a les 4 coins
         if len(found) == 4:
             table_markers = found
-
-            # On retire ces IDs de la liste des objets "mobiles"
             objects = [o for o in objects if o["id"] not in table_ids]
     else:
-        # Pas configuré -> on ne tente pas de mapping
         table_markers = None
 
-    # 4) Debug overlay + fenêtre (TOUJOURS)
+    # Debug overlay
     if ids is not None:
         cv2.aruco.drawDetectedMarkers(debug_img, corners, ids)
 
+    # Affiche aussi le nombre détecté
+    cv2.putText(debug_img, f"Detected: {len(objects)}", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    cv2.putText(debug_img, f"Team: {TEAM_COLOR}", (10, 70),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+
     cv2.imshow("vision", debug_img)
-    cv2.waitKey(1) 
+    cv2.waitKey(1)
 
     return objects, table_markers
+
 
 def close():
     global _cap
