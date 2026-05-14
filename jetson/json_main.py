@@ -49,7 +49,101 @@ def world_to_dict(w):
     }
 
 
-print(f"[jetson] d�marrage \u2192 maman {MAMAN_IP}:{MAMAN_PORT}")
+print(f"[jetson] demarrage \u2192 maman {MAMAN_IP}:{MAMAN_PORT}")
+
+# =============================================================================
+#  PATCH json_main.py — Envoi COULEUR au démarrage + support CALIBRATION
+# =============================================================================
+#
+#  À INSÉRER : dans json_main.py, JUSTE AVANT la boucle `while True:`
+#  (donc après "print(f"[jetson] démarrage → maman ...")")
+# =============================================================================
+
+# ---- Initialisation odométrie (envoi COULEUR au démarrage) ----
+#
+# On envoie une commande COULEUR à maman pour qu'elle dise à la carte moteurs :
+# "Tu es à cette position avec cette orientation".
+#
+# La position de départ vient de scenario.json. Si on est de la couleur
+# inverse, il faudrait symétriser X. À gérer selon le tirage au sort.
+#
+# Format attendu côté maman :
+#   {"kind": "COULEUR", "x_mm": 1150, "y_mm": 800, "theta_rad": 0.0}
+
+# Lecture de la couleur d'équipe (depuis team_color.txt si tu utilises vision_aruco.py)
+import os
+_color_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "team_color.txt")
+try:
+    with open(_color_file, "r") as f:
+        TEAM_COLOR = f.read().strip().lower()
+except FileNotFoundError:
+    TEAM_COLOR = "blue"   # fallback
+
+# Position de départ selon notre couleur
+# scenario.json contient la position pour "notre" couleur de base (disons jaune)
+# Si on est de l'autre couleur, on symétrise X
+robot_start = runner.scenario.get("robot_start", {"x_mm": 1150, "y_mm": 800, "theta_rad": 0.0})
+start_x = robot_start["x_mm"]
+start_y = robot_start["y_mm"]
+start_theta = robot_start.get("theta_rad", 0.0)
+
+# Si on est de la couleur inverse, on symétrise X (table symétrique selon X)
+# À adapter selon ta convention "couleur de base" dans scenario.json
+if TEAM_COLOR == "blue":
+    start_x = -start_x
+    start_theta = start_theta + 3.14159   # demi-tour
+
+print(f"[jetson] envoi COULEUR initial → ({start_x}, {start_y}, {start_theta:.3f}) "
+      f"team={TEAM_COLOR}")
+
+couleur_msg = {
+    "type":     "world_state",
+    "t_ms":     int(time.time() * 1000),
+    "frame_id": 0,
+    "mapping_ok": False,
+    "world":    {},
+    "command":  {
+        "kind":      "COULEUR",
+        "x_mm":      start_x,
+        "y_mm":      start_y,
+        "theta_rad": start_theta,
+    },
+}
+sock.sendto(json.dumps(couleur_msg).encode("utf-8"), (MAMAN_IP, MAMAN_PORT))
+
+# On laisse 200 ms à maman pour traiter et envoyer à la carte moteurs
+time.sleep(0.2)
+
+print("[jetson] init odométrie OK, démarrage boucle stratégie")
+
+# ============================================================
+# OPTIONNEL : pour lancer la CALIBRATION avant le match
+# ============================================================
+#
+# La calibration prend ~30s (le robot tourne en rond puis fait des aller-retour).
+# NE PAS la lancer pendant un match.
+#
+# Pour la lancer manuellement avant le match, décommenter ces lignes :
+#
+# print("[jetson] envoi CALIBRATION → robot va calibrer pendant ~30s")
+# calib_msg = {
+#     "type":       "world_state",
+#     "t_ms":       int(time.time() * 1000),
+#     "frame_id":   0,
+#     "mapping_ok": False,
+#     "world":      {},
+#     "command":    {"kind": "CALIBRATION"},
+# }
+# sock.sendto(json.dumps(calib_msg).encode("utf-8"), (MAMAN_IP, MAMAN_PORT))
+# time.sleep(35)  # attendre la fin de la calibration
+# print("[jetson] calibration terminée")
+
+
+# ============================================================
+# Boucle principale (inchangée par rapport à ton code actuel)
+# ============================================================
+# while True:
+#     ...
 
 while True:
     t0 = time.time()
