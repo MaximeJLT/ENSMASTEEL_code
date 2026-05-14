@@ -349,7 +349,7 @@ int main(int argc, char** argv) {
 
     std::cout << "[maman] UDP listen 5005 -> ACK 5006\n";
     std::cout << "[maman] motor=" << motor_port.path()
-              << " actuator=" << actuator_port.path()
+              << " actuator=" << actuator_port.path() << "\n";
               //<< " lidar=" << lidar_port.path() << "\n";
 
     std::vector<int> carried;
