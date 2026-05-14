@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import time
+import json
 
 USE_CAMERA = True
 CAM_INDEX = 0

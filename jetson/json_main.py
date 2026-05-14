@@ -11,8 +11,6 @@ from world_init import init_world
 from world_updater import update_world_state
 from json_strategy import JetsonStrategyRunner
 
-TEAM_COLOR = "yellow"
-
 # ---- R�seau ----
 JETSON_IP   = "127.0.0.1"
 JETSON_PORT = 5006
@@ -60,7 +58,8 @@ print(f"[jetson] demarrage \u2192 maman {MAMAN_IP}:{MAMAN_PORT}")
 
 with open("scenario.json", "r") as f:
     data = json.load(f)
-    robot_start = data[data["team"]]
+    TEAM_COLOR = data["team"]
+    robot_start = data[TEAM_COLOR]
 
  #robot_start = runner.scenario.get("robot_start", {"x_mm": 1150, "y_mm": 800, "theta_rad": 0.0})
 start_x = robot_start["x_mm"]
