@@ -20,11 +20,19 @@ from typing import Optional, List, Tuple
 # Command
 # -----------------------------------------------------------------------
 
+# =============================================================================
+#  PATCH json_strategy.py — Ajout de theta_rad à Command + helpers
+# =============================================================================
+#
+#  À APPLIQUER : Dans json_strategy.py, remplacer la classe Command par celle-ci :
+# =============================================================================
+
 @dataclass
 class Command:
     kind: str
     x_mm:      Optional[float] = None
     y_mm:      Optional[float] = None
+    theta_rad: Optional[float] = None    # ← NOUVEAU : pour COULEUR
     zone_name: Optional[str]   = None
     crate_id:  Optional[int]   = None
     from_x_mm: Optional[float] = None
@@ -34,6 +42,7 @@ class Command:
         d = {"kind": self.kind}
         if self.x_mm      is not None: d["x_mm"]      = round(self.x_mm, 1)
         if self.y_mm      is not None: d["y_mm"]      = round(self.y_mm, 1)
+        if self.theta_rad is not None: d["theta_rad"] = round(self.theta_rad, 4)
         if self.zone_name is not None: d["zone_name"] = self.zone_name
         if self.crate_id  is not None: d["crate_id"]  = self.crate_id
         if self.from_x_mm is not None: d["from_x_mm"] = round(self.from_x_mm, 1)
@@ -44,6 +53,7 @@ class Command:
         parts = [self.kind]
         if self.x_mm      is not None: parts.append(f"x={self.x_mm:.0f}")
         if self.y_mm      is not None: parts.append(f"y={self.y_mm:.0f}")
+        if self.theta_rad is not None: parts.append(f"theta={self.theta_rad:.3f}")
         if self.zone_name is not None: parts.append(f"zone={self.zone_name}")
         if self.crate_id  is not None: parts.append(f"crate={self.crate_id}")
         return f"Command({', '.join(parts)})"
