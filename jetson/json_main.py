@@ -11,6 +11,8 @@ from world_init import init_world
 from world_updater import update_world_state
 from json_strategy import JetsonStrategyRunner
 
+TEAM_COLOR == "blue"
+
 # ---- R�seau ----
 JETSON_IP   = "127.0.0.1"
 JETSON_PORT = 5006
@@ -30,6 +32,12 @@ runner      = JetsonStrategyRunner("scenario.json")
 maman_state = {}
 
 
+with open("scenario.json", "r") as f:
+    data = json.load(f)
+    
+print (data[TEAM_COLOR])
+
+
 def world_to_dict(w):
     rob = w.robot.get("us", None)
     opp = w.opponent.get("enemy", None)
@@ -47,6 +55,8 @@ def world_to_dict(w):
         "zones":     list(w.zones.keys()),
         "matchtime": w.matchtime,
     }
+
+
 
 
 print(f"[jetson] demarrage \u2192 maman {MAMAN_IP}:{MAMAN_PORT}")
