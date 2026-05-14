@@ -32,10 +32,7 @@ runner      = JetsonStrategyRunner("scenario.json")
 maman_state = {}
 
 
-with open("scenario.json", "r") as f:
-    data = json.load(f)
-    
-print (data[TEAM_COLOR])
+
 
 
 def world_to_dict(w):
@@ -61,38 +58,10 @@ def world_to_dict(w):
 
 print(f"[jetson] demarrage \u2192 maman {MAMAN_IP}:{MAMAN_PORT}")
 
-# =============================================================================
-#  PATCH json_main.py — Envoi COULEUR au démarrage + support CALIBRATION
-# =============================================================================
-#
-#  À INSÉRER : dans json_main.py, JUSTE AVANT la boucle `while True:`
-#  (donc après "print(f"[jetson] démarrage → maman ...")")
-# =============================================================================
+with open("scenario.json", "r") as f:
+    robot_start = json.load(f)
 
-# ---- Initialisation odométrie (envoi COULEUR au démarrage) ----
-#
-# On envoie une commande COULEUR à maman pour qu'elle dise à la carte moteurs :
-# "Tu es à cette position avec cette orientation".
-#
-# La position de départ vient de scenario.json. Si on est de la couleur
-# inverse, il faudrait symétriser X. À gérer selon le tirage au sort.
-#
-# Format attendu côté maman :
-#   {"kind": "COULEUR", "x_mm": 1150, "y_mm": 800, "theta_rad": 0.0}
-
-# Lecture de la couleur d'équipe (depuis team_color.txt si tu utilises vision_aruco.py)
-import os
-_color_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "team_color.txt")
-try:
-    with open(_color_file, "r") as f:
-        TEAM_COLOR = f.read().strip().lower()
-except FileNotFoundError:
-    TEAM_COLOR = "blue"   # fallback
-
-# Position de départ selon notre couleur
-# scenario.json contient la position pour "notre" couleur de base (disons jaune)
-# Si on est de l'autre couleur, on symétrise X
-#robot_start = runner.scenario.get("robot_start", {"x_mm": 1150, "y_mm": 800, "theta_rad": 0.0})
+ #robot_start = runner.scenario.get("robot_start", {"x_mm": 1150, "y_mm": 800, "theta_rad": 0.0})
 start_x = robot_start["x_mm"]
 start_y = robot_start["y_mm"]
 start_theta = robot_start.get("theta_rad", 0.0)
