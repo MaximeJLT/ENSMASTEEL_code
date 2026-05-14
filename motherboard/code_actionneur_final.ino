@@ -1,3 +1,4 @@
+
 #include <PicoSoftwareSerial.h>
 #include <SCServo.h>     
 #include <Wire.h>
@@ -5,6 +6,7 @@
 
 //  CONFIGURATION SERVOMOTEURS (STS3215)
 
+SoftwareSerial SerialPompe(13, 12);
 SoftwareSerial MonUART(2, 2);   // ligne half‑duplex
 SMS_STS sts;                 // objet de communication FT servo bus
 
@@ -13,6 +15,11 @@ SMS_STS sts;                 // objet de communication FT servo bus
 Adafruit_MCP23X17 mcp;
 const uint8_t VANNE_1 = 0; 
 const uint8_t NUM_VANNES = 1;
+
+const int PUMP_PIN = 15;   // GP15 – compatible PWM sur Pico
+
+// --- Vitesse par défaut (0–255, Arduino analogWrite) ---
+const int DEFAULT_SPEED = 200;
 
 //  STRUCTURE REPRESENTANT UN BRAS ROBOTIQUE
 
@@ -32,12 +39,26 @@ BrasRobotique bras4 = {4,10, 11, 12};
 void setup() {
   Serial.begin(115200);
   MonUART.begin(115200);
+  SerialPompe.begin(9600);
   sts.pSerial = &MonUART;
   if (!mcp.begin_I2C()) {
     while (1);
   }
   mcp.pinMode(VANNE_1, OUTPUT);
   mcp.digitalWrite(VANNE_1, LOW);
+
+}
+
+// FONCTIONS POMPE
+
+void pump(int speed) {
+  speed = constrain(speed, 0, 255);
+  analogWrite(PUMP_PIN, speed);
+  SerialPompe.println(speed);
+}
+
+void stopPump() {
+  analogWrite(PUMP_PIN, 0);
 }
 
 //  FONCTIONS : ELECTROVANNE
@@ -143,19 +164,23 @@ void traiterAlerte(String message) {
     // Exemple : on attend le texte "ALERT"
     if (message.equalsIgnoreCase("PICK")) {
         Serial.println("picking");
+        pump(DEFAULT_SPEED);
         Attraper(bras1);
         Attraper(bras2);
         Attraper(bras3);
         Attraper(bras4);
+        stopPump();
         Serial.println("DONE");
     }
     else {
         if (message.equalsIgnoreCase("DROP")) {
+            pump(DEFAULT_SPEED);
             Serial.println("dropping");
             Deposer(bras1);
             Deposer(bras2);
             Deposer(bras3);
             Deposer(bras4);
+            stopPump();
             Serial.println("DONE");
         }
         else{
@@ -181,4 +206,5 @@ void loop() {
         }
     }
 }
-}
+
+
