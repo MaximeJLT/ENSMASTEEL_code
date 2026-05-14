@@ -82,7 +82,7 @@ except FileNotFoundError:
 # Position de départ selon notre couleur
 # scenario.json contient la position pour "notre" couleur de base (disons jaune)
 # Si on est de l'autre couleur, on symétrise X
-robot_start = runner.scenario.get("robot_start", {"x_mm": 1150, "y_mm": 800, "theta_rad": 0.0})
+#robot_start = runner.scenario.get("robot_start", {"x_mm": 1150, "y_mm": 800, "theta_rad": 0.0})
 start_x = robot_start["x_mm"]
 start_y = robot_start["y_mm"]
 start_theta = robot_start.get("theta_rad", 0.0)
