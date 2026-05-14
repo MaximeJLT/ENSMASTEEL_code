@@ -1,11 +1,11 @@
-#include <SoftwareSerial.h>
+#include <PicoSoftwareSerial.h>
 #include <SCServo.h>     
 #include <Wire.h>
 #include "Adafruit_MCP23X17.h"   
 
 //  CONFIGURATION SERVOMOTEURS (STS3215)
 
-SoftwareSerial UART(2, 2);   // ligne half‑duplex
+SoftwareSerial MonUART(2, 2);   // ligne half‑duplex
 SMS_STS sts;                 // objet de communication FT servo bus
 
 //  CONFIGURATION ÉLECTROVANNES (Adafruit MCP23017)
@@ -17,27 +17,27 @@ const uint8_t NUM_VANNES = 1;
 //  STRUCTURE REPRESENTANT UN BRAS ROBOTIQUE
 
 struct BrasRobotique {
+  int idbras;
   int idServoBase;    
   int idServoMain;    
   int idVanne;        
 };
 // Uart
-BrasRobotique bras1 = {1, 2, 0};
-BrasRobotique bras2 = {1, 2, 0};
-BrasRobotique bras3 = {1, 2, 0};
-BrasRobotique bras4 = {1, 2, 0};
+BrasRobotique bras1 = {1,0, 1, 2};
+BrasRobotique bras2 = {2,3, 4, 5};
+BrasRobotique bras3 = {3,7, 8, 9};
+BrasRobotique bras4 = {4,10, 11, 12};
 
 
 void setup() {
   Serial.begin(115200);
-  UART.begin(115200);
-  sts.pSerial = &UART;
+  MonUART.begin(115200);
+  sts.pSerial = &MonUART;
   if (!mcp.begin_I2C()) {
     while (1);
   }
   mcp.pinMode(VANNE_1, OUTPUT);
   mcp.digitalWrite(VANNE_1, LOW);
-  Statut = "idle";
 }
 
 //  FONCTIONS : ELECTROVANNE
@@ -52,7 +52,7 @@ void fermerVanne(int vanne) {
 //  SERVOS INDIVIDUELS
 
 void allerA(int id, int pos, int vitesse = 800) {
-  sts.WritePos(id, pos, vitesse);
+  sts.WritePosEx(id, pos, vitesse);
 }
 void tournerServo(int id, int vitesse) {
   sts.WriteSpe(id, vitesse); 
@@ -100,7 +100,7 @@ void relacher(BrasRobotique bras) {
 
 
 void Attraper(BrasRobotique bras) {
-  if((bras = bras1) ||(bras = bras4) ){
+  if((bras.idbras = 1) ||(bras.idbras = 4) ){
         positionBras(bras, 450, 450);
         delay(100);
         aspirer(bras);
@@ -120,7 +120,7 @@ void Attraper(BrasRobotique bras) {
 
 // Déposer un objet
 void Deposer(BrasRobotique bras) {
-    if((bras = bras1) ||(bras = bras4) ){
+    if((bras.idbras = 1) ||(bras.idbras = 4) ){
         positionBras(bras, 450, 450);
         delay(100);
         relacher(bras);
@@ -164,20 +164,21 @@ void traiterAlerte(String message) {
     }
 }
 
-String bufferUART = "";
+String buffer = "";
 
 
 void loop() {
-    while (Serial1.available() > 0) {
-        char c = Serial1.read();
+    while (Serial.available() > 0) {
+        char c = Serial.read();
         if (c == '\n' || c == '\r') {
-            if (bufferUART.length() > 0) {
-                traiterAlerte(bufferUART);
-                bufferUART = "";
+            if (buffer.length() > 0) {
+                traiterAlerte(buffer);
+                buffer = "";
             }
         }
         else {
-            bufferUART += c;
+            buffer += c;
         }
     }
+}
 }
