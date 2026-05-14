@@ -22,19 +22,19 @@ F_MIN = 2    # Fréquence minimale pour bouger (Hz)
 # Conversion radian → pas moteur
 rad_per_step = 2 * math.pi / 200  # 200 pas par tour moteur
 
-# Gains d’odométrie (calibrés plus tard)
+# Gains d'odométrie (calibrés plus tard)
 gainL = 1.0
 gainA = 1.0
 
 #================================ VARIABLES GLOBALES ================================#
-# Consigne : [x, y, angle]
-consigne_xyO = [0, 0, 0]
+# Consigne : [x, y, angle] en MÈTRES et RADIANS (cohérent avec OTOS)
+consigne_xyO = [0.0, 0.0, 0.0]
 
 # Vitesse robot (vx, vy, w)
-v_robot = [0, 0, 0]
+v_robot = [0.0, 0.0, 0.0]
 
 # Vitesse en pas moteur
-v_pas = [0, 0, 0]
+v_pas = [0.0, 0.0, 0.0]
 
 # Période PID
 dt = 0.01
@@ -45,12 +45,12 @@ freq_2 = 1000
 freq_3 = 1000
 
 # États PID
-erreur_prec_x = 0
-erreur_prec_y = 0
-erreur_prec_angle = 0
-integrale_x = 0
-integrale_y = 0
-integrale_angle = 0
+erreur_prec_x = 0.0
+erreur_prec_y = 0.0
+erreur_prec_angle = 0.0
+integrale_x = 0.0
+integrale_y = 0.0
+integrale_angle = 0.0
 
 # Position odométrique
 Position = None
@@ -59,7 +59,6 @@ Position = None
 mission_active = False
 
 #================================ ANGLE CUMULATIF (UNWRAP) ================================#
-# L’OTOS renvoie un angle entre -π et +π → on reconstruit un angle cumulatif
 angle_cumul = 0.0
 angle_prec = None
 
@@ -85,22 +84,18 @@ def stepper():
     wrap()
 
 #================================ CONFIGURATION MOTEURS ================================#
-# Mapping logique → physique
 STEP_PIN_1 = 18 ; DIR_PIN_1 = 17
 STEP_PIN_2 = 16 ; DIR_PIN_2 = 13
 STEP_PIN_3 = 20 ; DIR_PIN_3 = 19
 
-# Pins direction
 dir_pin_1 = Pin(DIR_PIN_1, Pin.OUT)
 dir_pin_2 = Pin(DIR_PIN_2, Pin.OUT)
 dir_pin_3 = Pin(DIR_PIN_3, Pin.OUT)
 
-# Enable drivers
 EN_PIN = 21
 en_pin = Pin(EN_PIN, Pin.OUT)
 en_pin.value(0)  # Active les drivers
 
-# State machines PIO
 sm_1 = StateMachine(1, stepper, freq_1, set_base=Pin(STEP_PIN_1))
 sm_2 = StateMachine(2, stepper, freq_2, set_base=Pin(STEP_PIN_2))
 sm_3 = StateMachine(3, stepper, freq_3, set_base=Pin(STEP_PIN_3))
@@ -111,15 +106,10 @@ myOtos.begin()
 t.sleep(1)
 
 myOtos.calibrateImu()
-
-# Applique les gains (seront recalibrés)
 myOtos.setLinearScalar(gainL)
 myOtos.setAngularScalar(gainA)
-
-# Unités : mètres et radians
 myOtos.setLinearUnit(myOtos.kLinearUnitMeters)
 myOtos.setAngularUnit(myOtos.kAngularUnitRadians)
-
 myOtos.resetTracking()
 
 Position = myOtos.getPosition()
@@ -128,7 +118,6 @@ Position = myOtos.getPosition()
 def unwrap_angle(angle):
     """
     Transforme un angle borné [-π, +π] en angle cumulatif illimité.
-    Permet de mesurer plusieurs tours complets.
     """
     global angle_cumul, angle_prec
 
@@ -138,11 +127,8 @@ def unwrap_angle(angle):
 
     delta = angle - angle_prec
 
-    # Passage +179° → -179° → +1 tour
     if delta < -math.pi:
         angle_cumul += 2 * math.pi
-
-    # Passage -179° → +179° → -1 tour
     elif delta > math.pi:
         angle_cumul -= 2 * math.pi
 
@@ -150,15 +136,16 @@ def unwrap_angle(angle):
     return angle + angle_cumul
 
 #================================ CONVERSION CONSIGNE ANGLE ============================#
-def convertir_consigne_angle(angle_absolu_deg, angle_cumulatif_rad):
+def convertir_consigne_angle(angle_absolu_rad, angle_cumulatif_rad):
     """
-    Convertit une consigne d’angle absolue (0–360°)
+    Convertit une consigne d'angle absolue (en radians, [0, 2π])
     en angle cumulatif cohérent avec Position.h.
+    
+    NOTE : maman envoie déjà en radians, donc on prend directement.
     """
-    angle_absolu = math.radians(angle_absolu_deg)
     angle_actuel_mod = angle_cumulatif_rad % (2 * math.pi)
 
-    diff = angle_absolu - angle_actuel_mod
+    diff = angle_absolu_rad - angle_actuel_mod
 
     # Normalisation dans [-π, +π]
     if diff > math.pi:
@@ -170,9 +157,6 @@ def convertir_consigne_angle(angle_absolu_deg, angle_cumulatif_rad):
 
 #================================ LECTURE ODOMETRE =====================================#
 def Odometre():
-    """
-    Lit la position OTOS et applique l’unwrapping de l’angle.
-    """
     global Position
     Position = myOtos.getPosition()
     Position.h = unwrap_angle(Position.h)
@@ -186,52 +170,27 @@ def read_line():
             return line.decode().strip()
     return None
 
-#================================ TRAITEMENT CONSIGNE ==================================#
-def consigne():
+#================================ ENVOI TELEMETRIE =====================================#
+def send_pos(Pos):
     """
-    Interprète les commandes UART :
-    - GOTO x y h
-    - STOP
+    Envoie la position à maman en MÈTRES (maman convertit en mm chez elle).
     """
-    global consigne_xyO, mission_active
-
-    cmd = read_line()
-    if not cmd:
+    if Pos is None:
         return
+    msg = "POS {:.4f} {:.4f} {:.4f}\n".format(Pos.x, Pos.y, Pos.h)
+    uart0.write(msg)
 
-    parts = cmd.split()
-
-    # Commande GOTO
-    if parts[0] == "GOTO" and len(parts) >= 3:
-        try:
-            x = float(parts[1])
-            y = float(parts[2])
-            h = float(parts[3]) if len(parts) > 3 else 0.0
-
-            # Convertit l’angle absolu en angle cumulatif
-            h_cumul = convertir_consigne_angle(h, Position.h)
-
-            consigne_xyO = [x, y, h_cumul]
-            mission_active = True
-
-        except ValueError:
-            pass
-
-    # Commande STOP
-    elif parts[0] == "STOP":
-        consigne_xyO = [0.0, 0.0, 0.0]
-        mission_active = False
-        sm_1.active(0)
-        sm_2.active(0)
-        sm_3.active(0)
+def send_done():
+    uart0.write("DONE\n")
 
 #================================ OBJECTIF ATTEINT =====================================#
 def objectif_atteint(pos, cons):
     """
-    Vérifie si le robot est proche de la consigne.
+    Tolérance cohérente : 10 mm = 0.01 m et 3° en radians.
+    Position et consigne sont toutes deux en mètres + radians.
     """
-    tol_xy = 10      # mm
-    tol_angle = 3    # degrés
+    tol_xy = 0.01                  # 10 mm en mètres
+    tol_angle = math.radians(3)    # 3° en radians
 
     dx = abs(cons[0] - pos.x)
     dy = abs(cons[1] - pos.y)
@@ -239,28 +198,17 @@ def objectif_atteint(pos, cons):
 
     return dx < tol_xy and dy < tol_xy and dh < tol_angle
 
-#================================ ENVOI TELEMETRIE =====================================#
-def send_pos(Pos):
-    uart0.write(f"POS {Pos.x:.2f} {Pos.y:.2f} {Pos.h:.3f}\n")
-
-def send_done():
-    uart0.write("DONE\n")
-
 #================================ PID ROBOT ============================================#
 def PID(pos, cons):
     """
-    PID 3 axes :
-    - X
-    - Y
-    - Angle
-    Retourne (vx, vy, w)
+    PID 3 axes : X, Y, Angle. Tout en mètres / radians.
+    Retourne (vx, vy, w) en m/s et rad/s.
     """
     global erreur_prec_x, erreur_prec_y, erreur_prec_angle
     global integrale_x, integrale_y, integrale_angle
 
-    output = [0, 0, 0]
+    output = [0.0, 0.0, 0.0]
 
-    # Erreurs
     erreur_x = cons[0] - pos.x
     erreur_y = cons[1] - pos.y
     erreur_angle = cons[2] - pos.h
@@ -284,12 +232,10 @@ def PID(pos, cons):
     D_y = Kd * (erreur_y - erreur_prec_y) / dt
     D_angle = Kd * (erreur_angle - erreur_prec_angle) / dt
 
-    # Mise à jour erreurs précédentes
     erreur_prec_x = erreur_x
     erreur_prec_y = erreur_y
     erreur_prec_angle = erreur_angle
 
-    # Sortie PID
     output[0] = P_x + I_x + D_x
     output[1] = P_y + I_y + D_y
     output[2] = P_angle + I_angle + D_angle
@@ -304,24 +250,18 @@ def calcul_vitesse_en_pas(v):
     """
     vx, vy, w = v
 
-    # Vitesses roues (modèle cinématique)
     Va = 0.5 * vx - (math.sqrt(3)/2) * vy - dr * w
     Vb = 0.5 * vx + (math.sqrt(3)/2) * vy - dr * w
     Vc = -vx - dr * w
 
-    # Conversion en rad/s
     Wa = Va / Rr
     Wb = Vb / Rr
     Wc = Vc / Rr
 
-    # Conversion rad/s → pas/s
     return [Wa / rad_per_step, Wb / rad_per_step, Wc / rad_per_step]
 
 #================================ LIMITATION FREQUENCE =================================#
 def frequence_def(v_pas):
-    """
-    Limite les fréquences moteurs à f_max.
-    """
     Va, Vb, Vc = map(abs, v_pas)
     max_val = max(Va, Vb, Vc)
 
@@ -335,9 +275,6 @@ def frequence_def(v_pas):
 
 #================================ DIRECTION + FREQUENCE =================================#
 def update_motor_directions_and_freq(v_pas):
-    """
-    Applique les directions moteurs et retourne les fréquences absolues.
-    """
     Va, Vb, Vc = v_pas
 
     dir_pin_1.value(1 if Va >= 0 else 0)
@@ -345,6 +282,24 @@ def update_motor_directions_and_freq(v_pas):
     dir_pin_3.value(1 if Vc >= 0 else 0)
 
     return abs(Va), abs(Vb), abs(Vc)
+
+#================================ APPLICATION MOTEURS ==================================#
+def apply_motors(f1, f2, f3):
+    """
+    Helper : applique freq + active aux 3 moteurs avec gestion F_MIN.
+    IMPORTANT : sm.freq() exige un int en MicroPython, pas un float.
+    """
+    for sm, f in [(sm_1, f1), (sm_2, f2), (sm_3, f3)]:
+        if f < F_MIN:
+            sm.active(0)
+        else:
+            sm.freq(int(f))     # ← int() obligatoire
+            sm.active(1)
+
+def stop_motors():
+    sm_1.active(0)
+    sm_2.active(0)
+    sm_3.active(0)
 
 #================================ CALIBRATION ODOMETRIE =================================#
 def calibration_odo():
@@ -355,16 +310,15 @@ def calibration_odo():
     """
     global gainL, gainA, mission_active
 
-    # Stop PID
     mission_active = False
-    sm_1.active(0); sm_2.active(0); sm_3.active(0)
+    stop_motors()
     t.sleep(0.2)
 
     #------------------ 1) CALIBRATION ANGULAIRE ------------------#
     myOtos.resetTracking()
     t.sleep(0.1)
 
-    objectif_angle = 10 * 2 * math.pi  # 10 tours
+    objectif_angle = 10 * 2 * math.pi  # 10 tours en radians
 
     while True:
         pos = myOtos.getPosition()
@@ -374,20 +328,19 @@ def calibration_odo():
         if abs(erreur) < math.radians(2):
             break
 
-        v_robot = [0, 0, 1.5 * erreur]
-        v_pas = calcul_vitesse_en_pas(v_robot)
-        f1, f2, f3 = update_motor_directions_and_freq(v_pas)
+        v_robot_local = [0.0, 0.0, 1.5 * erreur]
+        v_pas_local = calcul_vitesse_en_pas(v_robot_local)
+        f1, f2, f3 = update_motor_directions_and_freq(v_pas_local)
         f1, f2, f3 = frequence_def([f1, f2, f3])
 
-        sm_1.freq(f1); sm_2.freq(f2); sm_3.freq(f3)
-        sm_1.active(1); sm_2.active(1); sm_3.active(1)
-
+        apply_motors(f1, f2, f3)
         t.sleep(0.02)
 
-    sm_1.active(0); sm_2.active(0); sm_3.active(0)
+    stop_motors()
 
     theta_mesure = unwrap_angle(myOtos.getPosition().h)
-    gainA = objectif_angle / theta_mesure
+    if theta_mesure != 0:
+        gainA = objectif_angle / theta_mesure
     myOtos.setAngularScalar(gainA)
 
     #------------------ 2) CALIBRATION LINEAIRE ------------------#
@@ -409,58 +362,104 @@ def calibration_odo():
             if abs(erreur) < 0.005:
                 break
 
-            v_robot = [1.5 * erreur, 0, 0]
-            v_pas = calcul_vitesse_en_pas(v_robot)
-            f1, f2, f3 = update_motor_directions_and_freq(v_pas)
+            v_robot_local = [1.5 * erreur, 0.0, 0.0]
+            v_pas_local = calcul_vitesse_en_pas(v_robot_local)
+            f1, f2, f3 = update_motor_directions_and_freq(v_pas_local)
             f1, f2, f3 = frequence_def([f1, f2, f3])
 
-            sm_1.freq(f1); sm_2.freq(f2); sm_3.freq(f3)
-            sm_1.active(1); sm_2.active(1); sm_3.active(1)
-
+            apply_motors(f1, f2, f3)
             t.sleep(0.02)
 
-        sm_1.active(0); sm_2.active(0); sm_3.active(0)
+        stop_motors()
 
         pos1 = myOtos.getPosition()
         dx = pos1.x - pos0.x
         dy = pos1.y - pos0.y
         dist = math.sqrt(dx*dx + dy*dy)
-
         distances_mesurees.append(dist)
 
-    moyenne = sum(distances_mesurees) / len(distances_mesurees)
-    gainL = distance_commande / moyenne
-    myOtos.setLinearScalar(gainL)
+    if len(distances_mesurees) > 0:
+        moyenne = sum(distances_mesurees) / len(distances_mesurees)
+        if moyenne > 0:
+            gainL = distance_commande / moyenne
+            myOtos.setLinearScalar(gainL)
 
-    sm_1.active(0); sm_2.active(0); sm_3.active(0)
+    stop_motors()
 
-#================================ CALIBRATION ORIGINE ==================================#
-def calibration_origine():
+#================================ DISPATCHER UART CENTRALISÉ ===========================#
+def handle_uart_command(cmd):
     """
-    Commande UART :
-    COULEUR x y h
-    → repositionne l’odométrie
+    DISPATCHER UNIQUE pour toutes les commandes UART.
+    
+    Une seule fonction lit les commandes et dispatche selon le mot-clé.
+    Évite le conflit où plusieurs tâches lisaient l'UART en parallèle
+    et se volaient les commandes.
+    
+    Commandes acceptées (toutes en MÈTRES + RADIANS) :
+        GOTO         x y theta      → translation vers (x, y, theta)
+        STOP                        → arrêt immédiat
+        CALIBRATION                 → lance calibration_odo()
+        COULEUR      x y theta      → repositionne l'odométrie
     """
-    cmd = read_line()
+    global consigne_xyO, mission_active, system_locked
+
     if not cmd:
         return
 
     parts = cmd.split()
-    if parts[0] == "COULEUR":
+    if len(parts) == 0:
+        return
+
+    kw = parts[0]
+
+    # ----- GOTO -----
+    if kw == "GOTO" and len(parts) >= 3:
         try:
             x = float(parts[1])
             y = float(parts[2])
-            h = float(parts[3]) if len(parts) > 3 else 0.0
+            h_in = float(parts[3]) if len(parts) > 3 else 0.0
+
+            # Convertit l'angle absolu en angle cumulatif
+            h_cumul = convertir_consigne_angle(h_in, Position.h)
+
+            consigne_xyO = [x, y, h_cumul]
+            mission_active = True
+        except ValueError:
+            pass
+
+    # ----- STOP -----
+    elif kw == "STOP":
+        consigne_xyO = [0.0, 0.0, 0.0]
+        mission_active = False
+        stop_motors()
+
+    # ----- CALIBRATION -----
+    elif kw == "CALIBRATION":
+        system_locked = True
+        stop_motors()
+        t.sleep(0.2)
+        calibration_odo()
+        system_locked = False
+        send_done()    # signal à maman : calibration terminée
+
+    # ----- COULEUR -----
+    elif kw == "COULEUR" and len(parts) >= 4:
+        try:
+            x = float(parts[1])
+            y = float(parts[2])
+            h = float(parts[3])
             currentPosition = qwiic_otos.Pose2D(x, y, h)
             myOtos.setPosition(currentPosition)
+            # Reset aussi l'unwrap
+            global angle_cumul, angle_prec
+            angle_cumul = 0.0
+            angle_prec = h
         except ValueError:
             pass
 
 #================================ TASKS ASYNCIO ========================================#
 async def Task_Odo():
-    """
-    Lit l’odométrie en continu (20 Hz)
-    """
+    """Lit l'odométrie en continu (20 Hz)"""
     global Position
     while True:
         raw = myOtos.getPosition()
@@ -468,141 +467,74 @@ async def Task_Odo():
         Position = raw
         await asyncio.sleep(0.05)
 
-async def Task_CALIB():
-    """
-    Attend la commande CALIBRATION
-    et lance la calibration complète.
-    """
-    global system_locked
-
-    while True:
-        cmd = read_line()
-
-        if cmd is None:
-            await asyncio.sleep(0.05)
-            continue
-
-        parts = cmd.split()
-
-        if parts[0] == "CALIBRATION":
-            system_locked = True
-
-            sm_1.active(0); sm_2.active(0); sm_3.active(0)
-            await asyncio.sleep(0.2)
-
-            calibration_odo()
-
-            system_locked = False
-            send_done()
-
-        await asyncio.sleep(0.05)
-
-async def Task_CALIB_OR():
-    """
-    Attend la commande COULEUR x y h
-    pour repositionner l’odométrie.
-    """
-    while True:
-        calibration_origine()
-        await asyncio.sleep(0.05)
-
 async def Task_UART():
     """
-    Lit les commandes GOTO / STOP
+    TÂCHE UNIQUE qui lit l'UART et dispatche.
+    Remplace Task_CALIB, Task_CALIB_OR et Task_UART originales.
     """
     while True:
-        consigne()
-        await asyncio.sleep(0.05)
+        cmd = read_line()
+        if cmd:
+            handle_uart_command(cmd)
+        await asyncio.sleep(0.02)
 
 async def Task_Control():
     """
     Boucle de contrôle principale :
-    - applique le PID sur la position actuelle
+    - applique le PID
     - convertit en vitesses roues
-    - applique directions + fréquences aux moteurs
-    - respecte le verrou 'system_locked' (ex: pendant calibration)
+    - applique aux moteurs
+    - respecte le verrou 'system_locked' (pendant calibration)
     """
     global v_robot, v_pas
 
     while True:
-        # Si le système est verrouillé (calibration en cours) → moteurs à l'arrêt
         if system_locked:
-            sm_1.active(0)
-            sm_2.active(0)
-            sm_3.active(0)
+            stop_motors()
             await asyncio.sleep(0.01)
             continue
 
-        # Si on a une position valide
         if Position is not None:
-            # Calcul des vitesses robot via PID
             v_robot = PID(Position, consigne_xyO)
-
-            # Conversion en pas/s pour chaque moteur
             v_pas = calcul_vitesse_en_pas(v_robot)
-
-            # Mise à jour des directions + fréquences brutes
             f1, f2, f3 = update_motor_directions_and_freq(v_pas)
-
-            # Limitation des fréquences à f_max
             f1, f2, f3 = frequence_def([f1, f2, f3])
+            apply_motors(f1, f2, f3)
 
-            # Application aux 3 moteurs
-            for sm, f in [(sm_1, f1), (sm_2, f2), (sm_3, f3)]:
-                if f < F_MIN:
-                    # En dessous d’un certain seuil → on coupe le moteur
-                    sm.active(0)
-                else:
-                    sm.freq(f)
-                    sm.active(1)
-
-        # Période de la boucle de contrôle
         await asyncio.sleep(0.01)
-
 
 async def Task_Telemetry():
     """
-    Gère :
-    - l’envoi de POS en continu quand aucune mission n’est active
-    - l’envoi de DONE quand la consigne est atteinte
+    Envoie TOUJOURS la position à maman (besoin en continu pour la Jetson).
+    En plus, signale l'arrivée avec DONE une seule fois.
     """
     global mission_active
 
     while True:
+        # Toujours envoyer POS
+        if Position is not None:
+            send_pos(Position)
+
+        # En plus, signaler l'arrivée
         if mission_active and Position is not None:
-            # Si une mission est en cours, on vérifie si l’objectif est atteint
             if objectif_atteint(Position, consigne_xyO):
                 send_done()
                 mission_active = False
+                stop_motors()
 
-                # On arrête les moteurs
-                sm_1.active(0)
-                sm_2.active(0)
-                sm_3.active(0)
-        else:
-            # Sinon, on envoie simplement la position actuelle
-            if Position is not None:
-                send_pos(Position)
-
-        await asyncio.sleep(0.05)
-
+        await asyncio.sleep(0.1)
 
 async def main():
     """
-    Point d’entrée :
+    Point d'entrée :
     - lance toutes les tâches asynchrones
-    - boucle infinie pour garder le programme vivant
     """
-    asyncio.create_task(Task_CALIB())      # écoute commande CALIBRATION
-    asyncio.create_task(Task_CALIB_OR())   # écoute commande COULEUR x y h
     asyncio.create_task(Task_Odo())        # met à jour Position
-    asyncio.create_task(Task_UART())       # écoute GOTO / STOP
+    asyncio.create_task(Task_UART())       # dispatcher UART unique (GOTO/STOP/CALIB/COULEUR)
     asyncio.create_task(Task_Control())    # PID + moteurs
     asyncio.create_task(Task_Telemetry())  # POS / DONE
 
     while True:
         await asyncio.sleep(1)
 
-
-# Lancement du scheduler asyncio
-
+asyncio.run(main())
