@@ -59,12 +59,18 @@ def world_to_dict(w):
 print(f"[jetson] demarrage \u2192 maman {MAMAN_IP}:{MAMAN_PORT}")
 
 with open("scenario.json", "r") as f:
-    robot_start = json.load(f)
+    robot_start = json.load(f)[TEAM_COLOR]
 
  #robot_start = runner.scenario.get("robot_start", {"x_mm": 1150, "y_mm": 800, "theta_rad": 0.0})
 start_x = robot_start["x_mm"]
 start_y = robot_start["y_mm"]
-start_theta = robot_start.get("theta_rad", 0.0)
+start_theta = robot_start["theta_rad"]
+
+print(f"""
+{start_x}
+{start_y}
+{start_theta}
+""")
 
 # Si on est de la couleur inverse, on symétrise X (table symétrique selon X)
 # À adapter selon ta convention "couleur de base" dans scenario.json
