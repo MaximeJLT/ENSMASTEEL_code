@@ -11,7 +11,7 @@ ROBOT_IDS = set([       # IDs ArUco de notre robot
 ])
 
 OPPONENT_IDS = set([     # IDs ArUco de l'adversaire
-   None # ex: 20
+    # ex: 20
 ])
 
 TABLE_CORNER_IDS = {0, 1, 2, 3}  # ArUco fixes de mapping, à ignorer pour les caisses
