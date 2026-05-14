@@ -155,10 +155,12 @@ struct MotorCard {
     // Évite de re-spammer le même GOTO
     double last_target_x = 1e18, last_target_y = 1e18;
 
-    void send_goto(double x, double y) { //si on nous redemande la meme cible alors qu'on l'a deja, on ignore
+    void send_goto(double x, double y) {
         if (x == last_target_x && y == last_target_y && moving) return;
         char buf[64];
-        snprintf(buf, sizeof(buf), "GOTO %.1f %.1f", x, y);
+        // On envoie le theta courant pour que le robot maintienne son orientation
+        // pendant la translation (avantage du holonome : pas de rotation parasite)
+        snprintf(buf, sizeof(buf), "GOTO %.1f %.1f %.4f", x, y, theta_rad);
         port->send_line(buf);
         moving = true;
         last_target_x = x;
