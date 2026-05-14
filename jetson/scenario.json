@@ -13,200 +13,144 @@
     "x_mm": 1250,
     "y_mm": -950
   },
-  "crates": [
+  "crates": 
+  { 
+    "color" : {
+      "36" : "blue",
+      "47" : "yellow"
+
+    },
+    "coords":[
     {
-      "id": 101,
-      "color": "blue",
       "x_mm": 1150,
       "y_mm": 200
     },
     {
-      "id": 102,
-      "color": "blue",
       "x_mm": 1200,
       "y_mm": 200
     },
     {
-      "id": 201,
-      "color": "yellow",
       "x_mm": 1280,
       "y_mm": 200
     },
     {
-      "id": 202,
-      "color": "yellow",
       "x_mm": 1340,
       "y_mm": 200
     },
     {
-      "id": 103,
-      "color": "blue",
       "x_mm": 1150,
       "y_mm": -600
     },
     {
-      "id": 104,
-      "color": "blue",
       "x_mm": 1200,
       "y_mm": -600
     },
     {
-      "id": 203,
-      "color": "yellow",
       "x_mm": 1280,
       "y_mm": -600
     },
     {
-      "id": 204,
-      "color": "yellow",
       "x_mm": 1340,
       "y_mm": -600
     },
     {
-      "id": 105,
-      "color": "blue",
       "x_mm": 340,
       "y_mm": -800
     },
     {
-      "id": 106,
-      "color": "blue",
       "x_mm": 400,
       "y_mm": -800
     },
     {
-      "id": 205,
-      "color": "yellow",
       "x_mm": 460,
       "y_mm": -800
     },
     {
-      "id": 206,
-      "color": "yellow",
       "x_mm": 520,
       "y_mm": -800
     },
     {
-      "id": 107,
-      "color": "blue",
       "x_mm": -460,
       "y_mm": -800
     },
     {
-      "id": 108,
-      "color": "blue",
       "x_mm": -400,
       "y_mm": -800
     },
     {
-      "id": 207,
-      "color": "yellow",
       "x_mm": -340,
       "y_mm": -800
     },
     {
-      "id": 208,
-      "color": "yellow",
       "x_mm": -280,
       "y_mm": -800
     },
     {
-      "id": 109,
-      "color": "blue",
       "x_mm": -1390,
       "y_mm": -600
     },
     {
-      "id": 110,
-      "color": "blue",
       "x_mm": -1330,
       "y_mm": -600
     },
     {
-      "id": 209,
-      "color": "yellow",
       "x_mm": -1270,
       "y_mm": -600
     },
     {
-      "id": 210,
-      "color": "yellow",
       "x_mm": -1210,
       "y_mm": -600
     },
     {
-      "id": 111,
-      "color": "blue",
       "x_mm": -1390,
       "y_mm": 200
     },
     {
-      "id": 112,
-      "color": "blue",
       "x_mm": -1330,
       "y_mm": 200
     },
     {
-      "id": 211,
-      "color": "yellow",
       "x_mm": -1270,
       "y_mm": 200
     },
     {
-      "id": 212,
-      "color": "yellow",
       "x_mm": -1210,
       "y_mm": 200
     },
     {
-      "id": 113,
-      "color": "blue",
       "x_mm": -410,
       "y_mm": -200
     },
     {
-      "id": 114,
-      "color": "blue",
       "x_mm": -350,
       "y_mm": -200
     },
     {
-      "id": 213,
-      "color": "yellow",
       "x_mm": -290,
       "y_mm": -200
     },
     {
-      "id": 214,
-      "color": "yellow",
       "x_mm": -230,
       "y_mm": -200
     },
     {
-      "id": 115,
-      "color": "blue",
       "x_mm": 290,
       "y_mm": -200
     },
     {
-      "id": 116,
-      "color": "blue",
       "x_mm": 350,
       "y_mm": -200
     },
     {
-      "id": 215,
-      "color": "yellow",
       "x_mm": 410,
       "y_mm": -200
     },
     {
-      "id": 216,
-      "color": "yellow",
       "x_mm": 470,
       "y_mm": -200
     }
-  ],
+    ]
+  },
   "strategy_path": [
     {
       "x_mm": 1150,

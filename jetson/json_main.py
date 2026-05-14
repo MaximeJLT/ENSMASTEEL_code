@@ -11,7 +11,7 @@ from world_init import init_world
 from world_updater import update_world_state
 from json_strategy import JetsonStrategyRunner
 
-TEAM_COLOR = "blue"
+TEAM_COLOR = "yellow"
 
 # ---- R�seau ----
 JETSON_IP   = "127.0.0.1"
