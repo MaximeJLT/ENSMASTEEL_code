@@ -10,9 +10,7 @@ ROBOT_IDS = set([       # IDs ArUco de notre robot
    13
 ])
 
-OPPONENT_IDS = set([     # IDs ArUco de l'adversaire
-    # ex: 20
-])
+OPPONENT_IDS = set() #ID aruco de l'adversaire, pour l'instant nul (pas de detection a par le LiDAR=
 
 TABLE_CORNER_IDS = {0, 1, 2, 3}  # ArUco fixes de mapping, à ignorer pour les caisses
 
