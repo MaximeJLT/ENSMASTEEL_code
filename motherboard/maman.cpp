@@ -242,6 +242,10 @@ struct ActuatorCard {
     SerialPort* port;
     std::string action = "idle";
     bool just_finished = false;
+    bool   obstacle = false;
+    double dist_mm = 0.0;
+    double angle_rad = 0.0;
+    int64_t last_update_ms = 0;
 
     void send_pick() {
         port->send_line("PICK");
@@ -260,10 +264,22 @@ struct ActuatorCard {
             action = "idle";
         } else if (line.rfind("ERR", 0) == 0) {
             std::cerr << "[actuator] " << line << "\n";
+        } else if (line.rfind("OBST ", 0) == 0) {
+            double d, a;
+            if (sscanf(line.c_str() + 5, "%lf %lf", &d, &a) == 2) {
+                obstacle = true;
+                dist_mm = d;
+                angle_rad = a;
+                last_update_ms = now_ms_wall();
+            }
+        } else if (line == "CLEAR") {
+            obstacle = false;
+            last_update_ms = now_ms_wall();
         }
     }
 };
 
+/*
 // ============================================================
 //  LidarCard
 // ============================================================
@@ -289,6 +305,7 @@ struct LidarCard {
         }
     }
 };
+*/
 
 // ============================================================
 //  Main
@@ -303,15 +320,16 @@ int main(int argc, char** argv) {
 
     SerialPort motor_port(argv[1],     B115200);
     SerialPort actuator_port(argv[2],  B115200);
-    SerialPort lidar_port(argv[3],     B115200);
-    if (!motor_port.ok() || !actuator_port.ok() || !lidar_port.ok()) {
+    //SerialPort lidar_port(argv[3],     B115200);
+    //if (!motor_port.ok() || !actuator_port.ok() || !lidar_port.ok()) {
+    if (!motor_port.ok() || !actuator_port.ok()) {
         std::cerr << "[maman] impossible d'ouvrir les ports série, abandon\n";
         return 1;
     }
 
     MotorCard    motor    {&motor_port};
     ActuatorCard actuator {&actuator_port};
-    LidarCard    lidar    {&lidar_port};
+    //LidarCard    lidar    {&lidar_port};
 
     int udp = socket(AF_INET, SOCK_DGRAM, 0);
     if (udp < 0) { perror("socket"); return 1; }
@@ -332,7 +350,7 @@ int main(int argc, char** argv) {
     std::cout << "[maman] UDP listen 5005 -> ACK 5006\n";
     std::cout << "[maman] motor=" << motor_port.path()
               << " actuator=" << actuator_port.path()
-              << " lidar=" << lidar_port.path() << "\n";
+              //<< " lidar=" << lidar_port.path() << "\n";
 
     std::vector<int> carried;
     const int MAX_CARRIED = 8;
@@ -344,14 +362,14 @@ int main(int argc, char** argv) {
         fds[0] = { udp,                 POLLIN, 0 };
         fds[1] = { motor_port.fd(),     POLLIN, 0 };
         fds[2] = { actuator_port.fd(),  POLLIN, 0 };
-        fds[3] = { lidar_port.fd(),     POLLIN, 0 };
+        //fds[3] = { lidar_port.fd(),     POLLIN, 0 };
         poll(fds, 4, 50);
 
         // 1) Lire les lignes UART
         std::string line;
         while (motor_port.read_line(line))    motor.on_line(line);
         while (actuator_port.read_line(line)) actuator.on_line(line);
-        while (lidar_port.read_line(line))    lidar.on_line(line);
+        //while (lidar_port.read_line(line))    lidar.on_line(line);
 
         // 2) Traiter un paquet Jetson
         if (fds[0].revents & POLLIN) {
@@ -445,9 +463,9 @@ int main(int argc, char** argv) {
                         {"theta_rad",  motor.theta_rad},
                         {"action",     action},
                         {"carried",    carried},
-                        {"obstacle",            lidar.obstacle},
-                        {"obstacle_dist_mm",    lidar.dist_mm},
-                        {"obstacle_angle_rad",  lidar.angle_rad},
+                        {"obstacle",            actuator.obstacle},
+                        {"obstacle_dist_mm",    actuator.dist_mm},
+                        {"obstacle_angle_rad",  actuator.angle_rad},
                     }}
                 };
                 std::string ack_str = ack.dump();
@@ -463,7 +481,7 @@ int main(int argc, char** argv) {
                               << "," << (int)motor.y_mm << ")"
                               << " act=" << action
                               << " carried=" << carried.size() << "/" << MAX_CARRIED
-                              << " lidar=" << (lidar.obstacle ? "OBST" : "clear")
+                              << " lidar=" << (actuator.obstacle ? "OBST" : "clear")
                               << "\n";
                 }
             }
