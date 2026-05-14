@@ -9,16 +9,18 @@ import math
 Kp = 1
 Ki = 1
 Kd = 1
-Rr = 29 #mm
-dr = 1 #mm
+Rr = 0.029 #m
+dr = 0.0155 #m
 f_max = 5000 #Hz
 F_MIN = 2  # Hz
-rad_per_step = 2 * math.pi / 200 
+rad_per_step = 2 * math.pi / 200
+gaiL = 1.0
+gainA = 1.0
 #================================SETUP VARIABLE================================#
 consigne_xyO = [0, 0, 0]
 v_robot = [0, 0, 0]   
 v_pas = [0, 0, 0]      
-dt = 0.1 # 100 milliseconde
+dt = 0.01 # 10 milliseconde
 freq_1 = 1000
 freq_2 = 1000
 freq_3 = 1000
@@ -43,17 +45,17 @@ def stepper():
     nop()[31]         # durée du LOW
     wrap()
 #================================SETUP STEPPER================================#
-# Broches moteur 1
-STEP_PIN_1 = 20
-DIR_PIN_1 = 19
+# Broches moteur 1th ---> 2reel (18,17)
+STEP_PIN_1 = 18
+DIR_PIN_1 = 17
 
-# Broches moteur 2
-STEP_PIN_2 = 18
-DIR_PIN_2 = 17
+# Broches moteur 2th ---> 3reel (16,13)
+STEP_PIN_2 = 16
+DIR_PIN_2 = 13
 
-# Broches moteur 3
-STEP_PIN_3 = 16
-DIR_PIN_3 = 13
+# Broches moteur 3th ---> 1reel (20,19)
+STEP_PIN_3 = 20
+DIR_PIN_3 = 19
 
 # Définitions des pins
 dir_pin_1 = Pin(DIR_PIN_1, Pin.OUT)
@@ -94,8 +96,8 @@ time.sleep(1)
 myOtos.calibrateImu()
 
 # Met les gains du capteur à 1
-myOtos.setLinearScalar(1.0)
-myOtos.setAngularScalar(1.0)
+myOtos.setLinearScalar(gainL)
+myOtos.setAngularScalar(gainA)
 
 # Met les unités du capteur en unités S.I.
 myOtos.setLinearUnit(myOtos.kLinearUnitMeters)
@@ -152,8 +154,8 @@ def consigne():
         sm_3.active(0)
 ------------------------------------------------    
 def objectif_atteint(pos, cons):
-    tol_xy = 5      # mm
-    tol_angle = 2   # degrés
+    tol_xy = 10      # mm
+    tol_angle = 3   # degrés
 
     dx = abs(cons[0] - pos.x)
     dy = abs(cons[1] - pos.y)
@@ -178,7 +180,7 @@ def PID(pos, cons):
     # Erreurs
     erreur_x = cons[0] - pos.x
     erreur_y = cons[1] - pos.y
-    erreur_angle = cons[2] - pos.h   # correction de l'index
+    erreur_angle = cons[2] - pos.h
 
     # --- Proportionnel ---
     P_x = Kp * erreur_x
@@ -213,7 +215,7 @@ def PID(pos, cons):
 ------------------------------------------------
 def calcul_vitesse_en_pas(v):
     """
-    v = [vx, vy, w] en mm/s et rad/s
+    v = [vx, vy, w] en m/s et rad/s
     Retourne [Va, Vb, Vc] en pas/s
     """
 
@@ -291,12 +293,90 @@ def update_motor_directions_and_freq(v_pas):
     f3 = abs(Vc)
 
     return f1, f2, f3
+------------------------------------------------
+def calibration_odo():
+    global gainL
+    global gainA
+    pos_calib = myOtos.getPosition()
+    y = pos_calib.y
+    Liste_cabL = [0,0,0,0,0,0,0,0,0,0]
+    vpp = [200,200,0]
+    vpm = [-200,-200,0]
+    conO = [0,0,360]
+    for i in range(10):
+        while objectif_atteint(pos_calib, conO):
+            sm_1.active(0)
+            sm_2.active(0)
+            sm_3.active(0)
+            v_robot = PID(pos_calib, conO)
+            v_pas = calcul_vitesse_en_pas(v_robot)
+            f1, f2, f3 = update_motor_directions_and_freq(v_pas)
+            f1, f2, f3 = frequence_def([f1, f2, f3])
+            sm_1.freq(f1)
+            sm_2.freq(f2)
+            sm_3.freq(f3)
+            
+            sm_1.active(1)
+            sm_2.active(1)
+            sm_3.active(1)
+            pos_calib = myOtos.getPosition()
+            t.sleep(0.1)
+    theta = myOtos.getPosition().h
+    gainA = 3600 / (3600 + theta)
+        
+    for i in range(10):
+        if (i%2 == 0):
+            f1, f2, f3 = update_motor_directions_and_freq(vpp)
+            f1, f2, f3 = frequence_def([f1, f2, f3])
+        else:
+            f1, f2, f3 = update_motor_directions_and_freq(vpm)
+            f1, f2, f3 = frequence_def([f1, f2, f3])
+        sm_1.freq(f1)
+        sm_2.freq(f2)
+        sm_3.freq(f3)
+        
+        sm_1.active(1)
+        sm_2.active(1)
+        sm_3.active(1)
+        
+        t.sleep(200 / f1)
+        
+        sm_1.active(0)
+        sm_2.active(0)
+        sm_3.active(0)
+        
+        Liste_cabL[i] = abs(y - myOtos.getPosition().y)
+        y = myOtos.getPosition().y
+    gainL = ref / mean(Liste_cabL)
+    
+    myOtos.setLinearScalar(gainL)
+    myOtos.setAngularScalar(gainA)
+------------------------------------------------
+def calibration_msg():
+    cmd = read_line()
+    if not cmd:
+        return  # rien à faire
+
+    parts = cmd.split()
+    if parts[0] == "CALIBRATION":
+        calibration_odo()
+        sm_1.active(0)
+        sm_2.active(0)
+        sm_3.active(0)
+        
 #================================LOOP PRINCIPALE================================#
 async def Task_Odo():
     global Position
     while True:
         Position = myOtos.getPosition()
+        if Position.h <= 0:
+            Position.h = 180 + (180 + Position.h)
         await asyncio.sleep(0.05)   # 20 Hz
+------------------------------------------------
+async def Task_CALIB():
+    while True:
+        calibration_msg()
+        await asyncio.sleep(1)
 ------------------------------------------------
 async def Task_UART():
     while True:
@@ -322,9 +402,9 @@ async def Task_Control():
             f1, f2, f3 = frequence_def([f1, f2, f3])
 
             # Application aux moteurs
-            sm_1.freq(f1)
-            sm_2.freq(f2)
-            sm_3.freq(f3)
+            #sm_1.freq(f1)
+            #sm_2.freq(f2)
+            #sm_3.freq(f3)
 
             # Application aux moteurs
             for sm, f in [(sm_1, f1), (sm_2, f2), (sm_3, f3)]:
@@ -343,12 +423,16 @@ async def Task_Telemetry():
             if objectif_atteint(Position, consigne_xyO):
                 send_done()
                 mission_active = False
+                sm_1.active(0)
+                sm_2.active(0)
+                sm_3.active(0)
         else:
             send_pos(Position)
 
         await asyncio.sleep(0.1)
 ------------------------------------------------
 async def main():
+    asyncio.create_task(Task_CALIB())
     asyncio.create_task(Task_Odo())
     asyncio.create_task(Task_UART())
     asyncio.create_task(Task_Control())
