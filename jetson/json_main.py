@@ -59,7 +59,8 @@ def world_to_dict(w):
 print(f"[jetson] demarrage \u2192 maman {MAMAN_IP}:{MAMAN_PORT}")
 
 with open("scenario.json", "r") as f:
-    robot_start = json.load(f)[TEAM_COLOR]
+    data = json.load(f)
+    robot_start = data[data["team"]]
 
  #robot_start = runner.scenario.get("robot_start", {"x_mm": 1150, "y_mm": 800, "theta_rad": 0.0})
 start_x = robot_start["x_mm"]

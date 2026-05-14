@@ -18,7 +18,8 @@ TABLE_CORNER_IDS = {
 
 # Couleur d'équipe : "blue" ou "yellow"
 # À CHANGER LE MATIN DU MATCH selon le tirage au sort
-TEAM_COLOR = "blue"
+with open("scenario.json", "r") as f:
+    TEAM_COLOR = json.load(f)["team"]
 
 # IDs ArUco selon le règlement Eurobot 2026
 CRATE_BLUE_ID  = 36
