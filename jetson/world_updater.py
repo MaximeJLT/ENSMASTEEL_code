@@ -7,7 +7,7 @@ from mapping import TableMapper
 
 # TODO: 
 ROBOT_IDS = set([       # IDs ArUco de notre robot
-   None # ex: 10
+   13
 ])
 
 OPPONENT_IDS = set([     # IDs ArUco de l'adversaire
