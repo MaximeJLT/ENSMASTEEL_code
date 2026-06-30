@@ -3,27 +3,16 @@ import time
 from typing import Optional, Tuple
 from sim_core import WorldState, Command
 
-# -----------------------------------------------------------------------
-# Param�tres d'�vitement
-# -----------------------------------------------------------------------
-
-DANGER_RADIUS_MM   = 450.0   # distance robot\u2194adversaire d�clenchant le stop
-STOP_TIMEOUT_S     = 0.1     # attente avant de tenter le contournement
-DETOUR_MARGIN_MM   = 100.0   # marge suppl�mentaire au-del� du rayon de danger
-DETOUR_ARRIVAL_TOL = 60.0    # tol�rance arriv�e au waypoint de d�tour
-ARRIVAL_TOL        = 40.0    # tol�rance arriv�e destination normale
-AVOID_COOLDOWN_S   = 4.0     # apr�s un d�tour, d�lai avant de re-checker l'adversaire
-# Vitesse adversaire en dessous de laquelle on le considère immobile (mm/s)
+DANGER_RADIUS_MM   = 450.0   
+STOP_TIMEOUT_S     = 0.1     
+DETOUR_MARGIN_MM   = 100.0  
+DETOUR_ARRIVAL_TOL = 60.0    
+ARRIVAL_TOL        = 40.0   
+AVOID_COOLDOWN_S   = 4.0     
 OPP_STATIC_SPEED_MM_S = 80.0
 
-# Limites de la map (à ajuster selon ton zones.json)
 MAP_X_MIN, MAP_X_MAX = -1450.0, 1450.0
 MAP_Y_MIN, MAP_Y_MAX =  -950.0,  950.0
-
-
-# -----------------------------------------------------------------------
-# Helpers g�om�triques
-# -----------------------------------------------------------------------
 
 def _dist_point_to_segment(
     px: float, py: float,
@@ -65,7 +54,7 @@ def _compute_detour_waypoint(
 ) -> Tuple[float, float]:
     """
     Calcule un waypoint de contournement perpendiculaire au segment RT,
-    du c�t� oppos� � l'adversaire.
+    du cote oppose a l'adversaire.
     """
     dx, dy = tx - rx, ty - ry
     seg_len = math.hypot(dx, dy)
@@ -77,7 +66,6 @@ def _compute_detour_waypoint(
     perp_l = (-uy,  ux)
     perp_r = ( uy, -ux)
 
-    # cross > 0 \u2192 adversaire � gauche \u2192 on passe � droite
     cross = ux * (oy - ry) - uy * (ox - rx)
     perp = perp_r if cross > 0 else perp_l
 
@@ -85,18 +73,15 @@ def _compute_detour_waypoint(
 
     offset = danger_r + margin
     return cpx + perp[0] * offset, cpy + perp[1] * offset
-# -----------------------------------------------------------------------
-# StrategyRunner avec �vitement adversaire
-# -----------------------------------------------------------------------
 
 class StrategyRunner:
     """
-    Ex�cute s�quentiellement les �tapes de world.strategy_plan.
+    Execute sequentiellement les etapes de world.strategy_plan.
 
-    �tats internes d'�vitement :
-        NORMAL    \u2192 ex�cution normale du plan
-        STOPPED   \u2192 adversaire bloque le chemin, on attend STOP_TIMEOUT_S
-        DETOURING \u2192 on se dirige vers un waypoint de contournement
+    etats internes d'evitement :
+        NORMAL    execution normale du plan
+        STOPPED   adversaire bloque le chemin, on attend STOP_TIMEOUT_S
+        DETOURING on se dirige vers un waypoint de contournement
     """
 
     def __init__(self):
@@ -107,12 +92,11 @@ class StrategyRunner:
         self._stop_start_time: float       = 0.0
         self._detour_target: Optional[Tuple[float, float]] = None
         self._resume_target: Optional[Tuple[float, float]] = None
-        self._cooldown_until: float        = 0.0   # world.t_s en dessous duquel on ignore l'adversaire
+        self._cooldown_until: float        = 0.0   
         self._opp_prev_x: Optional[float] = None
         self._opp_prev_y: Optional[float] = None
         self._opp_prev_t: float = 0.0
 
-    # ------------------------------------------------------------------
     def step(self, world: WorldState) -> Optional[Command]:
 
         if world.match_finished:
@@ -132,14 +116,11 @@ class StrategyRunner:
         step = plan[self.plan_idx]
         kind = step.get("type", "WAIT")
 
-        # ---- �vitement adversaire (pendant GOTO ou si d�j� en �vitement) ----
         if kind == "GOTO" or self._avoid_state != "NORMAL":
             cmd = self._handle_avoidance(world, step)
             if cmd is not None:
                 return cmd
-            # None = reprendre plan normal
 
-        # ---- GOTO ----
         if kind == "GOTO":
             return self._exec_goto(world, step)
 
@@ -167,10 +148,9 @@ class StrategyRunner:
             return None
         
 
-    # ------------------------------------------------------------------
     def _handle_avoidance(self, world: WorldState, step: dict) -> Optional[Command]:
         """
-        Retourne une Command si �vitement actif, None sinon (plan reprend).
+        Retourne une Command si evitement actif, None sinon (plan reprend).
         """
         opp = world.opponent
         rx, ry = world.robot.x_mm, world.robot.y_mm
@@ -187,7 +167,6 @@ class StrategyRunner:
 
         ox, oy = opp.x_mm, opp.y_mm
 
-        # ---- Vitesse + position future de l'adversaire ----
         LOOKAHEAD_S = 1.0
         vx_opp, vy_opp = 0.0, 0.0
         if self._opp_prev_x is not None:
@@ -205,11 +184,7 @@ class StrategyRunner:
         self._opp_prev_y = oy
         self._opp_prev_t = world.t_s
 
-        # On vérifie si notre trajectoire est gênée
-        # Pour mobile : on regarde si on croise le "couloir" entre sa pos actuelle et future
-        # Pour statique : on regarde juste sa position actuelle
         if opp_is_moving:
-            # Distance min entre notre segment robot→cible et son segment pos→pos_future
             dist_to_opp = _segments_min_distance(rx, ry, tx, ty,
                                                 ox, oy, ox_pred, oy_pred)
         else:
@@ -217,9 +192,7 @@ class StrategyRunner:
 
         opp_on_path = dist_to_opp < DANGER_RADIUS_MM
 
-        # ---- NORMAL ----
         if self._avoid_state == "NORMAL":
-            # Cooldown actif apr�s un d�tour \u2192 on ignore l'adversaire temporairement
             if world.t_s < self._cooldown_until:
                 return None
 
@@ -230,10 +203,9 @@ class StrategyRunner:
                 self._resume_target   = (tx, ty)
             return None
 
-        # ---- STOPPED ----
         elif self._avoid_state == "STOPPED":
             if not opp_on_path:
-                print("[avoid] \u2713 Voie libre \u2192 reprise NORMAL")
+                print("[avoid] Voie libre reprise NORMAL")
                 self._avoid_state   = "NORMAL"
                 self._resume_target = None
                 return None
@@ -241,10 +213,8 @@ class StrategyRunner:
             elapsed = world.t_s - self._stop_start_time
             remaining = max(0.0, STOP_TIMEOUT_S - elapsed)
             if elapsed >= STOP_TIMEOUT_S:
-                # ---- 3 cas selon l'adversaire ----
 
                 if not opp_is_moving:
-                    # CAS 1 : adversaire arrêté → contournement classique
                     dtx, dty = _compute_detour_waypoint(
                         rx, ry, tx, ty, ox, oy,
                         DANGER_RADIUS_MM, DETOUR_MARGIN_MM,
@@ -256,20 +226,16 @@ class StrategyRunner:
                     self._detour_target = (dtx, dty)
                     return Command(kind="GOTO", x_mm=dtx, y_mm=dty)
 
-                # Adversaire mobile → fonce sur nous ou s'éloigne ?
-                # Vecteur adversaire → nous
                 dx_to_us = rx - ox
                 dy_to_us = ry - oy
                 dist_to_us = math.hypot(dx_to_us, dy_to_us)
 
                 if dist_to_us > 1e-6:
-                    # Produit scalaire normalisé entre vitesse adv et direction vers nous
                     cos_angle = (vx_opp * dx_to_us + vy_opp * dy_to_us) / (opp_speed * dist_to_us)
                 else:
                     cos_angle = 0.0
 
                 if cos_angle > 0.3:
-                    # CAS 3 : il fonce sur nous → s'écarter sur le côté (avec prédiction)
                     dtx, dty = _compute_detour_waypoint(
                         rx, ry, tx, ty, ox_pred, oy_pred,
                         DANGER_RADIUS_MM, DETOUR_MARGIN_MM,
@@ -281,31 +247,28 @@ class StrategyRunner:
                     self._detour_target = (dtx, dty)
                     return Command(kind="GOTO", x_mm=dtx, y_mm=dty)
                 else:
-                    # CAS 2 : il s'éloigne ou passe à côté → on attend
                     print(f"[avoid] CAS 2 (s'éloigne, cos={cos_angle:.2f}) → attente")
                     return Command(kind="GOTO", x_mm=rx, y_mm=ry)
             else:
                 return Command(kind="GOTO", x_mm=rx, y_mm=ry)
 
-        # ---- DETOURING ----
         elif self._avoid_state == "DETOURING":
             dtx, dty = self._detour_target
             d_detour = math.hypot(dtx - rx, dty - ry)
 
             if d_detour < DETOUR_ARRIVAL_TOL:
-                print("[avoid] \u2713 D�tour atteint \u2192 reprise plan normal")
+                print("[avoid] Detour atteint reprise plan normal")
                 self._avoid_state    = "NORMAL"
                 self._detour_target  = None
                 self._resume_target  = None
                 self._cooldown_until = world.t_s + AVOID_COOLDOWN_S
-                print(f"[avoid]   cooldown {AVOID_COOLDOWN_S}s activ� jusqu'� t={self._cooldown_until:.1f}s")
+                print(f"[avoid]   cooldown {AVOID_COOLDOWN_S}s active jusqu'a t={self._cooldown_until:.1f}s")
                 return None
 
             return Command(kind="GOTO", x_mm=dtx, y_mm=dty)
 
         return None
 
-    # ------------------------------------------------------------------
     def _exec_goto(self, world: WorldState, step: dict) -> Optional[Command]:
         tx = float(step["x_mm"])
         ty = float(step["y_mm"])
@@ -318,7 +281,6 @@ class StrategyRunner:
         else:
             return Command(kind="GOTO", x_mm=tx, y_mm=ty)
 
-    # ------------------------------------------------------------------
     def _step_legacy(self, world: WorldState) -> Optional[Command]:
         if self.plan_idx >= len(world.strategy_path):
             return None
@@ -335,7 +297,6 @@ class StrategyRunner:
 
         return Command(kind="GOTO", x_mm=tx, y_mm=ty)
 
-    # ------------------------------------------------------------------
     def avoid_status(self) -> dict:
         return {
             "state":           self._avoid_state,
