@@ -1,38 +1,22 @@
-# mapping.py
-# Objectif: construire une homographie H pour convertir pixels -> mm
-# Hypothese: table plane + 4 ArUco fixes visibles (reperes table)
-# Version v0: pas de fisheye; on fera la correction plus tard si besoin
-
 import numpy as np
 import cv2
 
 
 class TableMapper:
     def __init__(self):
-        self.H = None          # homographie pixel->world
-        self.H_inv = None      # optionnel world->pixel
+        self.H = None         
+        self.H_inv = None      
         self.last_ok = False
 
-        # TODO 1: IDs des 4 tags fixes de table
         self.table_ids = {20, 21, 22, 23}
 
-        # Convention repere (origine centre table):
-        # 4 aruco table en mm :
         self.world_corners_mm = {
             "A": (-1500, 1000),
             "B": ( 1500, 1000),
             "C": ( 1500, -1000),
             "D": ( -1500, -1000),
         }
-        # self.world_corners_mm = {
-        #     "A": (-300,  200),  # TL
-        #     "B": ( 300,  200),  # TR
-        #     "C": ( 300, -200),  # BR
-        #     "D": (-300, -200),  # BL
-        # }
-
-        # TODO 2: associer chaque ID table a un coin (BL/BR/TR/TL)
-        # Exemple: 0->BL, 1->BR, 2->TR, 3->TL
+     
         self.id_to_corner = {
             0: "D",  # BL
             1: "C",  # BR
@@ -45,7 +29,6 @@ class TableMapper:
         Recalcule l'homographie si on a 4 coins table valides.
         Renvoie True si mapping OK, sinon False (sans jamais crasher).
         """
-        # table_markers attendu: dict avec TL/TR/BR/BL (chacun: {"id", "u_px", "v_px"} ou similaire)
         if table_markers is None:
             self.last_ok = False
             return False
@@ -55,7 +38,6 @@ class TableMapper:
             self.last_ok = False
             return False
 
-        # --- récupérer les 4 points pixels ---
         try:
             pix_pts = np.array([
                 [float(table_markers["TL"]["u_px"]), float(table_markers["TL"]["v_px"])],
@@ -67,8 +49,6 @@ class TableMapper:
             self.last_ok = False
             return False
 
-        # --- checks anti-dégénérescence ---
-        # 1) points trop proches (doublons / quasi-doublons)
         min_dist2 = 1e18
         for i in range(4):
             for j in range(i + 1, 4):
@@ -79,7 +59,6 @@ class TableMapper:
             self.last_ok = False
             return False
 
-        # 2) aire du quadrilatère trop petite (quasi-aligné)
         def poly_area(pts):
             # shoelace
             x = pts[:, 0]
@@ -94,8 +73,6 @@ class TableMapper:
             self.last_ok = False
             return False
 
-        # --- destination en mm (déjà définie dans ton init) ---
-        # world_corners_mm est un dict {"TL": (x,y), ...} → on extrait dans l'ordre TL/TR/BR/BL
         dst_pts = np.array([
             list(self.world_corners_mm["A"]),  # TL
             list(self.world_corners_mm["B"]),  # TR
@@ -103,7 +80,6 @@ class TableMapper:
             list(self.world_corners_mm["D"]),  # BL
         ], dtype=np.float32)
 
-        # --- calcul H ---
         try:
             H = cv2.getPerspectiveTransform(pix_pts, dst_pts)
             # Si det ~ 0 => inv impossible
