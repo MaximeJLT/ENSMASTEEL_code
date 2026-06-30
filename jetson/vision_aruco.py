@@ -17,12 +17,9 @@ TABLE_CORNER_IDS = {
     "BL": 20,
 }
 
-# Couleur d'équipe : "blue" ou "yellow"
-# À CHANGER LE MATIN DU MATCH selon le tirage au sort
 with open("scenario.json", "r") as f:
     TEAM_COLOR = json.load(f)["team"]
 
-# IDs ArUco selon le règlement Eurobot 2026
 CRATE_BLUE_ID  = 36
 CRATE_YELLOW_ID = 47
 CRATE_EMPTY_ID  = 41
@@ -48,37 +45,30 @@ def _init_camera():
 
 aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
 
-# ---- PARAMÈTRES DE DÉTECTION OPTIMISÉS pour détecter MAX d'ArUcos ----
 params = cv2.aruco.DetectorParameters()
 
-# Améliorer la détection des marqueurs petits et éloignés
 params.adaptiveThreshWinSizeMin = 3
 params.adaptiveThreshWinSizeMax = 23
 params.adaptiveThreshWinSizeStep = 4
 params.adaptiveThreshConstant = 7
 
-# Taille minimale du marqueur (en proportion de l'image) — réduit pour voir les petits
-params.minMarkerPerimeterRate = 0.01   # défaut 0.03, on baisse pour voir les petits ArUcos
+params.minMarkerPerimeterRate = 0.01   
 params.maxMarkerPerimeterRate = 4.0
 
-# Précision des contours
 params.polygonalApproxAccuracyRate = 0.05
 params.minCornerDistanceRate = 0.05
 params.minDistanceToBorder = 3
 params.minMarkerDistanceRate = 0.05
 
-# Affinement des coins (sub-pixel, plus précis)
 params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
 params.cornerRefinementWinSize = 5
 params.cornerRefinementMaxIterations = 30
 params.cornerRefinementMinAccuracy = 0.1
 
-# Marges de tolérance sur le contenu du marqueur
 params.markerBorderBits = 1
 params.perspectiveRemovePixelPerCell = 4
 params.perspectiveRemoveIgnoredMarginPerCell = 0.13
 
-# Tolérance sur les erreurs de décodage (plus permissif)
 params.maxErroneousBitsInBorderRate = 0.35
 params.errorCorrectionRate = 0.6
 
@@ -118,7 +108,6 @@ def get_objects():
         frame = None
 
     if frame is None:
-        # Fallback de test
         marker_id = 7
         marker_size_px = 400
         marker_img = cv2.aruco.generateImageMarker(aruco_dict, marker_id, marker_size_px)
@@ -131,7 +120,6 @@ def get_objects():
         input_img = frame
         debug_img = frame.copy()
 
-    # Détection (avec les paramètres tunés)
     corners, ids, rejected = detector.detectMarkers(input_img)
 
     objects = []
@@ -152,7 +140,6 @@ def get_objects():
                 "score_team": None
             })
 
-    # Détection des 4 coins table
     table_markers = None
     id_to_corner = {v: k for k, v in TABLE_CORNER_IDS.items() if v is not None}
     table_ids = set(id_to_corner.keys())
@@ -173,11 +160,9 @@ def get_objects():
     else:
         table_markers = None
 
-    # Debug overlay
     if ids is not None:
         cv2.aruco.drawDetectedMarkers(debug_img, corners, ids)
 
-    # Affiche aussi le nombre détecté
     cv2.putText(debug_img, f"Detected: {len(objects)}", (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
     cv2.putText(debug_img, f"Team: {TEAM_COLOR}", (10, 70),
