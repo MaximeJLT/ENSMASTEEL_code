@@ -1,18 +1,13 @@
-# world_state_updater.py
-# But: updater le WorldState a partir des detections ArUco (u_px, v_px)
-# v0: on met u_px/v_px dans x_mm/y_mm (TEMPORAIRE) en attendant le mapping.
-
 from world_state import Robot, Caisse, Opponent  # adapte si ton fichier s'appelle autrement
 from mapping import TableMapper
 
-# TODO: 
-ROBOT_IDS = set([       # IDs ArUco de notre robot
+ROBOT_IDS = set([      
    13
 ])
 
-OPPONENT_IDS = set() #ID aruco de l'adversaire, pour l'instant nul (pas de detection a par le LiDAR=
+OPPONENT_IDS = set() 
 
-TABLE_CORNER_IDS = {0, 1, 2, 3}  # ArUco fixes de mapping, à ignorer pour les caisses
+TABLE_CORNER_IDS = {0, 1, 2, 3}  
 
 def _px_to_mm(mapper, u_px, v_px):
     """
@@ -35,9 +30,9 @@ def update_world_state(world, detections, mapper=None):
 
     table_corner_ids = mapper.table_ids if mapper is not None else set()
 
-    world.caisses.clear()  # on clear les caisses a chaque update, on les recrée a partir des detections (v0)
-    world.robot.clear()   # idem pour le robot (v0: on gère pas encore la persistance des objets, juste update "us")
-    world.opponent.clear() # idem pour l'adversaire
+    world.caisses.clear()  
+    world.robot.clear()  
+    world.opponent.clear() 
 
     for det in detections:
         det_id = det.get("id", None)
@@ -53,12 +48,9 @@ def update_world_state(world, detections, mapper=None):
 
         x_mm, y_mm = mm
 
-        # 1) Classer la detection: robot / adversaire / caisse
         if det_id in ROBOT_IDS:
-            # 2) Creer l'objet si besoin
             if "us" not in world.robot:
                 world.robot["us"] = Robot()
-            # 3) Mettre a jour (v0: px -> "mm" temporaire)
             world.robot["us"].x_mm = float(x_mm)
             world.robot["us"].y_mm = float(y_mm)
 
@@ -70,10 +62,9 @@ def update_world_state(world, detections, mapper=None):
             world.opponent["enemy"].y_mm = float(y_mm)
 
         elif det_id in table_corner_ids:
-            continue  # coin de table, on skip
+            continue  
 
         else:
-            # CAISSE
             if det_id not in world.caisses:
                 world.caisses[det_id] = Caisse()
                 world.caisses[det_id].id = int(det_id)
