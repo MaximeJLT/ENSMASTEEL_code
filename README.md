@@ -132,13 +132,13 @@ OpenCV dictionary: **DICT_4X4_50**
 
 | Use | ID | Status |
 |-----|----|----|
-| Table corner TL | 21 | ✅ |
-| Table corner TR | 23 | ✅ |
-| Table corner BR | 22 | ✅ |
-| Table corner BL | 20 | ✅ |
-| Blue crate | 36 | ✅ rules |
-| Yellow crate | 47 | ✅ rules |
-| Empty crate | 41 | ✅ rules |
+| Table corner TL | 21 | ok |
+| Table corner TR | 23 | ok |
+| Table corner BR | 22 | ok |
+| Table corner BL | 20 | ok |
+| Blue crate | 36 | ok rules |
+| Yellow crate | 47 | ok rules |
+| Empty crate | 41 | ok rules |
 | Our robot | configurable | set in `world_updater.py → ROBOT_IDS` |
 | Opponent | configurable | set in `world_updater.py → OPPONENT_IDS` |
 
