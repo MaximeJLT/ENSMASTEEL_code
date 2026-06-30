@@ -44,7 +44,7 @@ def update_world_state(world, detections, mapper=None):
 
         mm = _px_to_mm(mapper, u_px, v_px)
         if mm is None:
-            continue #mapping pas dispo, on skip la detection pour l'instant
+            continue
 
         x_mm, y_mm = mm
 
