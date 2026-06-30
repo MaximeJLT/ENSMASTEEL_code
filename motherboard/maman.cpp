@@ -1,35 +1,3 @@
-// =============================================================================
-//  maman.cpp  —  Carte centrale du robot (Raspberry Pi, Linux)
-// =============================================================================
-//
-//  Architecture :
-//
-//    Jetson  ──UDP/JSON  5005──►  maman  ──UART──►  carte_moteurs
-//            ◄────────── 5006──             ──UART──►  carte_actionneurs
-//                                           ──UART──►  carte_LiDAR
-//
-//  Maman = dispatcher entre la Jetson (qui pense en mm) et les 3 cartes
-//  esclaves. ATTENTION : la carte moteurs (Antoine) travaille en MÈTRES
-//  car OTOS est configuré en mètres. Maman convertit donc mm <-> m
-//  uniquement pour la carte moteurs.
-//
-//  Commandes acceptées (de la Jetson) :
-//      GOTO         x_mm y_mm                   → translation, theta maintenu
-//      PICKUP       crate_id                    → ramassage
-//      DROP_ALL                                 → dépose les caisses portées
-//      MOVE_CURSOR  x_mm y_mm                   → comme GOTO sur axe X
-//      STOP                                     → arrêt immédiat
-//      CALIBRATION                              → calibration odo (avant match)
-//      COULEUR      x_mm y_mm theta_rad         → repositionne l'odométrie
-//
-//  Build :
-//      sudo apt install nlohmann-json3-dev
-//      g++ -std=c++17 -O2 maman.cpp -o maman -pthread
-//
-//  Run :
-//      ./maman /dev/ttyUSB0 /dev/ttyUSB1 /dev/ttyUSB2
-// =============================================================================
-
 #include <iostream>
 #include <string>
 #include <vector>
@@ -50,19 +18,11 @@
 
 using json = nlohmann::json;
 
-// ============================================================
-//  Utilitaire
-// ============================================================
-
 static int64_t now_ms_wall() {
     using namespace std::chrono;
     return duration_cast<milliseconds>(
         system_clock::now().time_since_epoch()).count();
 }
-
-// ============================================================
-//  SerialPort  —  POSIX UART non-bloquant, orienté ligne
-// ============================================================
 
 class SerialPort {
 public:
@@ -139,24 +99,6 @@ private:
     std::string rx_;
 };
 
-// ============================================================
-//  MotorCard  —  pilote la carte moteurs
-// ============================================================
-//
-//  ATTENTION : la carte moteurs (Antoine) parle en MÈTRES + RADIANS
-//  (OTOS configuré ainsi). Maman convertit donc mm <-> m.
-//
-//  Maman → carte (UART, texte) :
-//      GOTO        <x_m> <y_m> <theta_rad>
-//      STOP
-//      CALIBRATION
-//      COULEUR     <x_m> <y_m> <theta_rad>
-//
-//  Carte → maman (UART, texte) :
-//      POS         <x_m> <y_m> <theta_rad>     (push ~10 Hz)
-//      DONE                                    (cible atteinte / calib finie)
-//      ERR         <msg>
-//
 struct MotorCard {
     SerialPort* port;
     // État stocké en MILLIMÈTRES (convention maman/Jetson)
@@ -235,9 +177,6 @@ struct MotorCard {
     }
 };
 
-// ============================================================
-//  ActuatorCard
-// ============================================================
 struct ActuatorCard {
     SerialPort* port;
     std::string action = "idle";
@@ -279,10 +218,6 @@ struct ActuatorCard {
     }
 };
 
-/*
-// ============================================================
-//  LidarCard
-// ============================================================
 struct LidarCard {
     SerialPort* port;
     bool   obstacle = false;
@@ -305,11 +240,6 @@ struct LidarCard {
         }
     }
 };
-*/
-
-// ============================================================
-//  Main
-// ============================================================
 
 int main(int argc, char** argv) {
     if (argc < 4) {
@@ -320,8 +250,6 @@ int main(int argc, char** argv) {
 
     SerialPort motor_port(argv[1],     B115200);
     SerialPort actuator_port(argv[2],  B115200);
-    //SerialPort lidar_port(argv[3],     B115200);
-    //if (!motor_port.ok() || !actuator_port.ok() || !lidar_port.ok()) {
     if (!motor_port.ok() || !actuator_port.ok()) {
         std::cerr << "[maman] impossible d'ouvrir les ports série, abandon\n";
         return 1;
@@ -350,7 +278,6 @@ int main(int argc, char** argv) {
     std::cout << "[maman] UDP listen 5005 -> ACK 5006\n";
     std::cout << "[maman] motor=" << motor_port.path()
               << " actuator=" << actuator_port.path() << "\n";
-              //<< " lidar=" << lidar_port.path() << "\n";
 
     std::vector<int> carried;
     const int MAX_CARRIED = 8;
@@ -362,16 +289,12 @@ int main(int argc, char** argv) {
         fds[0] = { udp,                 POLLIN, 0 };
         fds[1] = { motor_port.fd(),     POLLIN, 0 };
         fds[2] = { actuator_port.fd(),  POLLIN, 0 };
-        //fds[3] = { lidar_port.fd(),     POLLIN, 0 };
         poll(fds, 4, 50);
 
-        // 1) Lire les lignes UART
         std::string line;
         while (motor_port.read_line(line))    motor.on_line(line);
         while (actuator_port.read_line(line)) actuator.on_line(line);
-        //while (lidar_port.read_line(line))    lidar.on_line(line);
 
-        // 2) Traiter un paquet Jetson
         if (fds[0].revents & POLLIN) {
             char buf[65536];
             sockaddr_in from{};
@@ -389,7 +312,6 @@ int main(int argc, char** argv) {
 
                 int frame_id = msg.value("frame_id", -1);
 
-                // ---- Dispatch de la commande ----
                 if (msg.contains("command") && !msg["command"].is_null()) {
                     auto& cmd = msg["command"];
                     std::string kind = cmd.value("kind", "");
@@ -422,23 +344,9 @@ int main(int argc, char** argv) {
                         motor.send_stop();
 
                     } else if (kind == "CALIBRATION") {
-                        // === NOUVEAU ===
-                        // Déclenche la séquence de calibration de l'odométrie
-                        // sur la carte moteurs (10 tours angulaires + 10 aller-retour
-                        // pour calibrer les gains du capteur OTOS).
-                        //
-                        // À envoyer AVANT le match (le robot tourne en rond ~30s).
-                        // NE JAMAIS envoyer pendant un match.
                         motor.send_calibration();
 
                     } else if (kind == "COULEUR") {
-                        // === NOUVEAU ===
-                        // Repositionne l'odométrie selon notre position de départ.
-                        // À envoyer UNE fois au début du match avec la position
-                        // correspondant à notre couleur d'équipe.
-                        //
-                        // Exemple : si on est côté droit, COULEUR 1150 800 0
-                        //          si on est côté gauche (couleur inverse), COULEUR -1150 800 3.1416
                         double x  = cmd.value("x_mm", 0.0);
                         double y  = cmd.value("y_mm", 0.0);
                         double th = cmd.value("theta_rad", 0.0);
@@ -446,13 +354,11 @@ int main(int argc, char** argv) {
                     }
                 }
 
-                // ---- Action courante (vue Jetson) ----
                 std::string action = "idle";
                 if      (motor.calibrating)         action = "calibrating";
                 else if (motor.moving)              action = "going";
                 else if (actuator.action != "idle") action = actuator.action;
 
-                // ---- ACK ----
                 json ack = {
                     {"type",     "ack"},
                     {"frame_id", frame_id},
